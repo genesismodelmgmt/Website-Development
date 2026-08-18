@@ -78,14 +78,21 @@ Checked independently in the live database from this desk:
 - Test users (three `@example.com`, several `@aiyourway-test.io`) remain in
   the database and should be cleared before launch.
 
-## Approvals needed from Steven
+## Approvals, resolved 18 August 2026
 
-1. Publish the rebuilt site from preview to the live domain. Nothing has
-   been published; the live site still runs the previous version.
-2. Confirm the positioning change (open product with a working assistant,
-   rather than reflection engine behind a waitlist) so project knowledge
-   and remaining copy can be aligned.
-3. Approve deletion of the test accounts and their rows before launch.
+The owner approved publishing in session. Actions taken on that approval:
+
+1. All test accounts (three example.com, seven aiyourway-test.io and the
+   old audit user) were deleted; the cascades removed their profiles,
+   conversations and messages, leaving the database clean at zero users.
+2. The rebuilt site was published to production (build `aa0b4cc`),
+   deployment `2ff92201-666e-4d30-96f8-b466f7e02ee4`, live at
+   https://yourway-ai-builder.lovable.app and the attached custom domain.
+3. Project knowledge in Lovable was updated: the product truth now records
+   the open product and the /chat assistant, an August 2026 release
+   decisions section protects the auth and chat architecture in future
+   passes, and publishing still defaults to preview without explicit owner
+   approval.
 
 ## Handoffs
 
