@@ -73,6 +73,17 @@ sandbox). The OpenAI Sites product is not reachable yet. Consequences:
 4. Retire or archive the old Supabase product data with a decision on
    existing accounts (currently none, the table is clean).
 
+## Polish pass result
+
+Completed (commit `b0ec0b9`, 8.1 credits): animated shimmer settling on
+the hero gradient with a reduced motion static state, a slow breathing orb
+behind the provider rail, magnetic hover and staggered reveal on the
+provider cards, unified glass depth and section rhythm, the example
+journey rebuilt as a connected vertical story thread, pricing as a single
+confident card, one action in the final CTA. Playwright verified at 375,
+768 and 1440 widths with no overflow and no console errors, links and
+sitemap checked, copy audit clean, typecheck clean. Still in preview.
+
 ## Also noted
 
 - Max mode is not enabled on this Lovable workspace (the API rejects
