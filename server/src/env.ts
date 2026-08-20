@@ -45,4 +45,11 @@ export const env = {
   /** Per-IP caps over a 15 minute window. Raised by the test suite, which is all one IP. */
   codeRequestLimit: Number(process.env.CODE_REQUEST_LIMIT ?? 6),
   loginAttemptLimit: Number(process.env.LOGIN_ATTEMPT_LIMIT ?? 10),
+  /**
+   * Instagram Graph API token for the public site's live feed. Optional — the
+   * site falls back to its curated gallery when unset, so nothing breaks in
+   * development or before the token is issued.
+   */
+  instagramToken: process.env.INSTAGRAM_ACCESS_TOKEN ?? '',
+  instagramCacheMinutes: Number(process.env.INSTAGRAM_CACHE_MINUTES ?? 10),
 };

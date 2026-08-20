@@ -9,6 +9,7 @@ import { env } from './env.js';
 import { adminRouter } from './routes/admin.js';
 import { authRouter } from './routes/auth.js';
 import { portalRouter } from './routes/portal.js';
+import { publicRouter } from './routes/public.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +23,7 @@ export function createApp() {
   app.use(attachUser);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  app.use('/api/public', publicRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/portal', portalRouter);
   app.use('/api/admin', adminRouter);
