@@ -32,28 +32,41 @@ const PALETTES: Record<WorkEntry['frame'], Palette> = {
   6: { bg: '#e2ddd3', block: '#f7f5f1', line: '#8a6f3c', glyph: '#16150f', text: '#16150f' },
 };
 
+// The frame is drawn on a canvas matching its tile, so captions are never
+// cropped when the aspect changes.
+const CANVAS: Record<WorkEntry['aspect'], { w: number; h: number }> = {
+  portrait: { w: 300, h: 400 },
+  landscape: { w: 400, h: 300 },
+  square: { w: 300, h: 300 },
+};
+
 function ComposedFrame({ entry }: { entry: WorkEntry }) {
   const p = PALETTES[entry.frame];
   const seq = String(entry.frame).padStart(2, '0');
+  const { w, h } = CANVAS[entry.aspect];
+  const cx = w / 2;
+  const cy = h * 0.42;
+  const r = Math.min(w, h) * 0.29;
+  const baseline = h - 70;
 
   return (
-    <svg viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice" className="h-full w-full" role="img" aria-label={entry.title}>
-      <rect width="300" height="400" fill={p.bg} />
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid slice" className="h-full w-full" role="img" aria-label={entry.title}>
+      <rect width={w} height={h} fill={p.bg} />
       {/* an off-centre block and a circle: the "photograph" the frame is waiting for */}
-      <rect x="150" y="0" width="150" height="400" fill={p.block} />
-      <circle cx="150" cy="168" r="86" fill="none" stroke={p.line} strokeWidth="1" />
-      <circle cx="150" cy="168" r="60" fill="none" stroke={p.line} strokeWidth="0.5" opacity="0.6" />
-      <line x1="24" y1="330" x2="276" y2="330" stroke={p.line} strokeWidth="1" />
-      <text x="24" y="120" fontFamily="Georgia, serif" fontSize="120" fill={p.glyph} opacity="0.16">
+      <rect x={cx} y="0" width={cx} height={h} fill={p.block} />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={p.line} strokeWidth="1" />
+      <circle cx={cx} cy={cy} r={r * 0.7} fill="none" stroke={p.line} strokeWidth="0.5" opacity="0.6" />
+      <line x1="24" y1={baseline} x2={w - 24} y2={baseline} stroke={p.line} strokeWidth="1" />
+      <text x="24" y={h * 0.3} fontFamily="Georgia, serif" fontSize={h * 0.3} fill={p.glyph} opacity="0.16">
         G
       </text>
-      <text x="24" y="356" fontFamily="Georgia, serif" fontSize="15" fill={p.text}>
+      <text x="24" y={baseline + 26} fontFamily="Georgia, serif" fontSize="15" fill={p.text}>
         {entry.title}
       </text>
-      <text x="24" y="374" fontFamily="ui-sans-serif, system-ui" fontSize="8.5" letterSpacing="2" fill={p.text} opacity="0.65">
+      <text x="24" y={baseline + 44} fontFamily="ui-sans-serif, system-ui" fontSize="8.5" letterSpacing="2" fill={p.text} opacity="0.65">
         {`GENESIS · ${entry.season.toUpperCase()}`}
       </text>
-      <text x="276" y="40" textAnchor="end" fontFamily="ui-sans-serif, system-ui" fontSize="9" letterSpacing="2" fill={p.text} opacity="0.5">
+      <text x={w - 24} y="40" textAnchor="end" fontFamily="ui-sans-serif, system-ui" fontSize="9" letterSpacing="2" fill={p.text} opacity="0.5">
         {`№ ${seq}`}
       </text>
     </svg>
