@@ -61,6 +61,22 @@ the anonymous option cards.
 - The Genesis site picks the change up within 60 seconds through the existing
   cache (`s-maxage=60`); no site redeploy needed.
 
+## Sports board restored (site side)
+
+The `/sports` board had been temporarily hidden (redirect to home, nav/footer/
+sitemap entries removed) while profiles were broken. With the feed fixed and
+all 71 sports records verified healthy (every record has a cover + photos, all
+spot-checked media URLs return real images, and profiles render sport label,
+height and Instagram handle), the hide was reverted and republished:
+
+- `/sports` renders the shared board again from the live feed (71 athletes,
+  all card images loading), with its original metadata, canonical and JSON-LD.
+- Sports links restored in nav, footer, sitemap, robots.txt and llms.txt;
+  `/sports-division` 301s to `/sports` again; homepage CTA, casting copy and
+  the concierge tour step restored.
+- Safeguards kept: anonymised records stay out of the sitemap and
+  `/talent/gsx-` stays disallowed in robots.txt.
+
 ## Data backfill (production, scoped to the Genesis customer account)
 
 - `models.sport` populated for the sports board only, from verified public
