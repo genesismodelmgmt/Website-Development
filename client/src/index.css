@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+
+/*
+ * Genesis house style: bone paper, ink type, a single muted brass accent.
+ * Display type is a serif, everything structural is a small tracked sans.
+ */
+@theme {
+  --color-bone: #f7f5f1;
+  --color-paper: #fffefb;
+  --color-ink: #16150f;
+  --color-ink-soft: #55524a;
+  --color-ink-faint: #8a867c;
+  --color-rule: #e2ddd3;
+  --color-brass: #8a6f3c;
+  --color-brass-soft: #f0e9dc;
+
+  --font-display: Georgia, 'Times New Roman', 'Iowan Old Style', serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-bone);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .label-caps {
+    @apply text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-ink-faint;
+  }
+
+  .card {
+    @apply rounded-sm border border-rule bg-paper;
+  }
+
+  .field {
+    @apply w-full rounded-sm border border-rule bg-paper px-3 py-2.5 text-[0.95rem] text-ink
+           outline-none transition placeholder:text-ink-faint
+           focus:border-brass focus:ring-1 focus:ring-brass/30;
+  }
+
+  .btn,
+  .btn-primary,
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2.5 text-[0.8rem]
+           font-semibold uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-ink text-bone hover:bg-brass;
+  }
+
+  .btn-ghost {
+    @apply border border-rule bg-transparent text-ink hover:border-ink;
+  }
+}
