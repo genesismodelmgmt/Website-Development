@@ -191,6 +191,34 @@ CREATE TABLE IF NOT EXISTS invoices (
 CREATE INDEX IF NOT EXISTS idx_invoices_client ON invoices (client_id, status);
 
 -- ---------------------------------------------------------------------------
+-- Public site
+-- ---------------------------------------------------------------------------
+
+-- Journal readers who asked to be kept in touch. Deliberately minimal: an
+-- address, where the signup came from, and when — nothing worth stealing.
+CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+  id          TEXT PRIMARY KEY,
+  email       TEXT NOT NULL UNIQUE,              -- always stored lower-cased
+  source      TEXT,                              -- home | journal | footer
+  created_at  TEXT NOT NULL
+);
+
+-- Enquiries from the public site. These are prospects, not clients — a booking
+-- enquiry graduates into the clients table when the agency takes it on.
+CREATE TABLE IF NOT EXISTS enquiries (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL DEFAULT 'booking',   -- booking | model | general
+  full_name   TEXT NOT NULL,
+  email       TEXT NOT NULL,
+  company     TEXT,
+  message     TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'new',       -- new | replied | closed
+  created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_enquiries_status ON enquiries (status, created_at);
+
+-- ---------------------------------------------------------------------------
 -- Audit
 -- ---------------------------------------------------------------------------
 

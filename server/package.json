@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('src/schema.sql','dist/schema.sql')\"",
     "start": "node dist/index.js",
     "seed": "tsx src/seed.ts",
+    "instagram:check": "tsx src/instagram-check.ts",
     "db:reset": "tsx src/seed.ts --reset",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test --import tsx test/*.test.ts"

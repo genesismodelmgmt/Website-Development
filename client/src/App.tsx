@@ -2,8 +2,13 @@ import type { ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth';
 import { PortalLayout } from './components/PortalLayout';
+import { PublicLayout } from './components/public/PublicLayout';
 import { Spinner } from './components/ui';
 import { Account } from './pages/Account';
+import { Home } from './pages/public/Home';
+import { Journal } from './pages/public/Journal';
+import { JournalArticle } from './pages/public/JournalArticle';
+import { Work } from './pages/public/Work';
 import { BookingDetail } from './pages/BookingDetail';
 import { Bookings } from './pages/Bookings';
 import { Communications } from './pages/Communications';
@@ -43,6 +48,14 @@ export function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          {/* The public site — the front door; the portal lives behind /sign-in. */}
+          <Route element={<PublicLayout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/work" element={<Work />} />
+            <Route path="/journal" element={<Journal />} />
+            <Route path="/journal/:slug" element={<JournalArticle />} />
+          </Route>
+
           <Route
             path="/sign-in"
             element={
@@ -83,7 +96,7 @@ export function App() {
             />
           </Route>
 
-          <Route path="*" element={<Navigate to="/portal" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

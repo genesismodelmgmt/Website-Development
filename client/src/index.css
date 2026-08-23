@@ -60,4 +60,48 @@ body {
   .btn-ghost {
     @apply border border-rule bg-transparent text-ink hover:border-ink;
   }
+
+  /* Every image slot on the public site: clipped, ruled, with a slow zoom on hover. */
+  .img-frame {
+    @apply block w-full overflow-hidden rounded-sm border border-rule bg-paper;
+  }
+
+  .img-frame > img,
+  .img-frame > svg {
+    transition: transform 0.9s cubic-bezier(0.2, 0.6, 0.2, 1);
+  }
+
+  a:hover .img-frame > img,
+  a:hover .img-frame > svg,
+  button:hover .img-frame > img,
+  button:hover .img-frame > svg {
+    transform: scale(1.035);
+  }
+}
+
+/* Scroll reveal for the public site. Off entirely under reduced motion. */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease;
+}
+
+.reveal-shown {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .img-frame > img,
+  .img-frame > svg {
+    transition: none;
+  }
 }

@@ -15,7 +15,23 @@ export interface OutboundEmail {
   body: string;
 }
 
-export async function deliver(message: OutboundEmail): Promise<void> {
+/**
+ * A subject line is a mail header, so a carriage return inside it can forge
+ * further headers once a real transport is wired up. `.trim()` does not touch
+ * interior newlines, so they are collapsed here — at the boundary, where every
+ * caller is covered rather than each one remembering.
+ */
+export const headerSafe = (value: string): string => value.replace(/[\r\n]+/g, ' ').trim();
+
+export async function deliver(input: OutboundEmail): Promise<void> {
+  const message: OutboundEmail = { ...input, subject: headerSafe(input.subject), to: headerSafe(input.to) };
+
+  // Under test the pretty block is suppressed. Node's test runner frames child
+  // process messages over stdout, and a stream of multi-line multibyte output
+  // from several concurrent test files corrupts that framing — the suite then
+  // fails with a deserialization error that has nothing to do with the code.
+  if (env.isTest) return;
+
   if (env.isProduction) {
     // eslint-disable-next-line no-console
     console.info(`[mail] queued to=${message.to} subject="${message.subject}" (no transport configured)`);

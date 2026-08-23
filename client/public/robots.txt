@@ -1,0 +1,12 @@
+# The public site is one SPA with the portal, so every route serves the same
+# index.html. Dropping the old site-wide noindex opened the marketing pages to
+# crawlers — and would have opened the signed-in area with them.
+
+User-agent: *
+Allow: /$
+Allow: /work
+Allow: /journal
+Disallow: /sign-in
+Disallow: /register
+Disallow: /portal
+Disallow: /api/

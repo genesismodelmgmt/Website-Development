@@ -1,9 +1,82 @@
-# Genesis Model Management — Client Portal
+# Genesis Model Management — Website & Client Portal
 
-A sign-in area for Genesis clients. A booker signs in, and everything the agency
-already holds for their company — bookings, correspondence, invoices — is there
-waiting for them. Someone enquiring for the first time gets an account too, and
-their history starts collecting from that moment.
+The Genesis site in two halves that share one origin, one design language and
+one deployment:
+
+- **The public site** (`/`, `/work`, `/journal`) — the front door. An
+  editorial, image-led home page, a filterable portfolio wall with an
+  Instagram integration, and the Genesis Journal: industry news, insights and
+  practical guidance, plus the agency's keynotes. Newsletter signup and a
+  booking enquiry form both persist to the same database the portal uses.
+- **The client portal** (`/sign-in`, `/portal`) — a booker signs in, and
+  everything the agency already holds for their company — bookings,
+  correspondence, invoices — is there waiting for them. Someone enquiring for
+  the first time gets an account too, and their history starts collecting from
+  that moment.
+
+## The public site
+
+### Imagery
+
+Two sources feed the pictures, in order of preference:
+
+1. **Instagram** — set `INSTAGRAM_ACCESS_TOKEN` (an Instagram Graph API token
+   for @genesismodelmgmt) in `server/.env` and the home page's feed strip shows
+   the account's latest posts, cached server-side for
+   `INSTAGRAM_CACHE_MINUTES` (default 10). No token, no problem: the strip
+   falls back to the curated wall and never renders empty.
+
+   **Issuing the token** — done once, by someone logged into the agency's
+   Instagram account. The token is a credential: it goes in `server/.env`
+   (gitignored) and never into the repo, a commit or a screenshot.
+
+   Meta retired *Instagram Basic Display* on 4 December 2024. The current
+   route is **Instagram API with Instagram Login**, which requires the
+   Instagram account to be a **Business or Creator** account (Instagram app →
+   Settings → Account type). Personal accounts cannot issue a token.
+
+   1. At [developers.facebook.com](https://developers.facebook.com/apps),
+      create an app and add the **Instagram** product.
+   2. Under *Instagram → API setup with Instagram login*, link
+      @genesismodelmgmt.
+   3. In the same panel, generate a token for that account. Make sure the
+      **`instagram_business_basic`** permission is granted — it is the one
+      that allows reading the account's own media.
+   4. Put it in `server/.env` as `INSTAGRAM_ACCESS_TOKEN=IGA...`
+   5. Verify it before trusting the site to it:
+
+      ```bash
+      npm run instagram:check -w server
+      ```
+
+      It goes through the same code path as the site, so it only passes if the
+      feed strip will actually render — a token that authenticates but returns
+      no usable images is reported as a failure, not a pass.
+
+   Long-lived tokens last **60 days**. `instagram:check` reports the days
+   remaining but **cannot refresh the stored token for you** — when it warns,
+   issue a fresh one and replace the value in `server/.env`. If a token does
+   lapse, nothing breaks: the strip falls back to the curated wall.
+2. **The curated wall** — `client/src/content/gallery.ts`. Drop a MediaSlide
+   export into `client/public/work/` and point an entry's `image` at it; until
+   then each entry renders a composed editorial frame in the house palette, so
+   the layout is finished today and photography slots in one line at a time.
+
+### The Journal and keynotes
+
+`client/src/content/journal.ts` holds the articles (three registers:
+industry news, insights, guidance) and the keynotes — short agency positions
+shown across the site. Adding a piece is adding an object; no CMS until the
+volume justifies one.
+
+### Public API
+
+`/api/public/instagram` (cached feed), `/api/public/newsletter` and
+`/api/public/enquiries` (both rate-limited; enquiries are stored, audited and
+forwarded to the bookings inbox via the mailer). Nothing under `/api/public`
+reads a session or can reach client data.
+
+## The client portal
 
 ## The part that matters: recognising a returning client
 
