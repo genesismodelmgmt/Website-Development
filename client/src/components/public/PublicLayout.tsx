@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { INSTAGRAM_URL } from '../../content/gallery';
 
@@ -59,6 +59,16 @@ function NewsletterForm({ source }: { source: 'home' | 'journal' | 'footer' }) {
 export function PublicLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+
+  /**
+   * Every public route starts at the top. Without this, navigating from the
+   * foot of a long page lands mid-way down the next one — with its heading and
+   * filters above the fold but still at opacity 0, waiting for a scroll that
+   * already happened. An in-page anchor (/#enquire) is left alone.
+   */
+  useEffect(() => {
+    if (!location.hash) window.scrollTo(0, 0);
+  }, [location.pathname, location.hash]);
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
     `text-[0.72rem] font-semibold uppercase tracking-[0.16em] transition ${isActive ? 'text-brass' : 'text-ink hover:text-brass'}`;

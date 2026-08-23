@@ -17,7 +17,22 @@ export function createApp() {
   const app = express();
 
   app.set('trust proxy', 1);
-  app.use(helmet({ contentSecurityPolicy: env.isProduction ? undefined : false }));
+  app.use(
+    helmet({
+      // Helmet's default policy is `img-src 'self' data:`, which blocks the
+      // Instagram CDN and would leave the public site's feed strip a row of
+      // broken tiles in production only — CSP is off in development, so this
+      // is exactly the class of bug that never shows up locally.
+      contentSecurityPolicy: env.isProduction
+        ? {
+            useDefaults: true,
+            directives: {
+              'img-src': ["'self'", 'data:', 'https://*.cdninstagram.com', 'https://*.fbcdn.net'],
+            },
+          }
+        : false,
+    }),
+  );
   app.use(express.json({ limit: '256kb' }));
   app.use(cookieParser());
   app.use(attachUser);

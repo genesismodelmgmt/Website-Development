@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { WorkEntry } from '../../content/gallery';
 
 /**
@@ -41,9 +42,11 @@ const CANVAS: Record<WorkEntry['aspect'], { w: number; h: number }> = {
 };
 
 function ComposedFrame({ entry }: { entry: WorkEntry }) {
-  const p = PALETTES[entry.frame];
+  // Falls back rather than throwing: the manifest is hand-edited, and a typo in
+  // `frame` or `aspect` should cost one odd-looking tile, not the whole page.
+  const p = PALETTES[entry.frame] ?? PALETTES[1];
   const seq = String(entry.frame).padStart(2, '0');
-  const { w, h } = CANVAS[entry.aspect];
+  const { w, h } = CANVAS[entry.aspect] ?? CANVAS.portrait;
   const cx = w / 2;
   const cy = h * 0.42;
   const r = Math.min(w, h) * 0.29;
@@ -74,10 +77,21 @@ function ComposedFrame({ entry }: { entry: WorkEntry }) {
 }
 
 export function EditorialImage({ entry, className = '' }: { entry: WorkEntry; className?: string }) {
+  // A photograph that 404s falls back to the composed frame rather than leaving
+  // a broken-image glyph on the portfolio wall.
+  const [failed, setFailed] = useState(false);
+  const showPhoto = entry.image && !failed;
+
   return (
-    <div className={`img-frame ${ASPECT_CLASS[entry.aspect]} ${className}`}>
-      {entry.image ? (
-        <img src={entry.image} alt={entry.title} loading="lazy" className="h-full w-full object-cover" />
+    <div className={`img-frame ${ASPECT_CLASS[entry.aspect] ?? ASPECT_CLASS.portrait} ${className}`}>
+      {showPhoto ? (
+        <img
+          src={entry.image!}
+          alt={entry.title}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover"
+        />
       ) : (
         <ComposedFrame entry={entry} />
       )}

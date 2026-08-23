@@ -1,12 +1,20 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Reveal } from '../../components/public/Reveal';
+import { useDocumentMeta } from '../../components/public/useDocumentMeta';
 import { categoryLabel, JOURNAL_CATEGORIES, journalArticles, keynotes, type JournalCategory } from '../../content/journal';
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
 export function Journal() {
   const [category, setCategory] = useState<JournalCategory | 'all'>('all');
+
+  useDocumentMeta({
+    title: 'The Journal',
+    description:
+      'Industry news, insights and practical guidance for models and clients, written by the Genesis booking team.',
+    path: '/journal',
+  });
 
   const sorted = [...journalArticles].sort((a, b) => b.date.localeCompare(a.date));
   const articles = category === 'all' ? sorted : sorted.filter((a) => a.category === category);
@@ -72,21 +80,21 @@ export function Journal() {
           </div>
         </div>
 
+        {/* No Reveal wrapper here: its transform would become the sticky card's
+            containing block and the card would have no travel to stick over. */}
         <aside>
-          <Reveal delay={100}>
-            <div className="card sticky top-24 p-6">
-              <p className="label-caps">Keynotes</p>
-              <p className="mt-2 text-xs leading-relaxed text-ink-faint">Short positions the agency stands behind.</p>
-              <div className="mt-6 space-y-6">
-                {keynotes.map((k) => (
-                  <div key={k.topic} className="border-l-2 border-brass pl-4">
-                    <p className="label-caps !text-brass">{k.topic}</p>
-                    <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">{k.note}</p>
-                  </div>
-                ))}
-              </div>
+          <div className="card sticky top-24 p-6">
+            <p className="label-caps">Keynotes</p>
+            <p className="mt-2 text-xs leading-relaxed text-ink-faint">Short positions the agency stands behind.</p>
+            <div className="mt-6 space-y-6">
+              {keynotes.map((k) => (
+                <div key={k.topic} className="border-l-2 border-brass pl-4">
+                  <p className="label-caps !text-brass">{k.topic}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">{k.note}</p>
+                </div>
+              ))}
             </div>
-          </Reveal>
+          </div>
         </aside>
       </div>
     </div>

@@ -58,6 +58,86 @@ adminRouter.get('/link-requests', (req, res) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Enquiries from the public site.
+//
+// The database is the system of record for these, not the notification email:
+// `deliver` has no transport wired up, so until one is configured an enquiry
+// that only ever became an email would be lost. This queue is what guarantees
+// the "we reply to every enquiry" promise on the public site can be kept.
+// ---------------------------------------------------------------------------
+
+adminRouter.get('/enquiries', (req, res) => {
+  const status = z.enum(['new', 'replied', 'closed', 'all']).catch('new').parse(req.query.status);
+
+  const where = status === 'all' ? '' : 'WHERE status = ?';
+  const params = status === 'all' ? [] : [status];
+
+  const rows = getDb()
+    .prepare(
+      `SELECT id, kind, full_name, email, company, message, status, created_at
+         FROM enquiries ${where}
+        ORDER BY created_at DESC
+        LIMIT 200`,
+    )
+    .all(...params) as Array<Record<string, unknown>>;
+
+  const counts = getDb()
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END), 0)     AS new_count,
+         COALESCE(SUM(CASE WHEN status = 'replied' THEN 1 ELSE 0 END), 0) AS replied_count,
+         COUNT(*)                                                        AS total
+       FROM enquiries`,
+    )
+    .get() as { new_count: number; replied_count: number; total: number };
+
+  res.json({
+    enquiries: rows.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      fullName: row.full_name,
+      email: row.email,
+      company: row.company,
+      message: row.message,
+      status: row.status,
+      createdAt: row.created_at,
+    })),
+    counts: { new: counts.new_count, replied: counts.replied_count, total: counts.total },
+  });
+});
+
+const enquiryStatusSchema = z.object({ status: z.enum(['new', 'replied', 'closed']) });
+
+adminRouter.post('/enquiries/:id', (req, res) => {
+  const parsed = enquiryStatusSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Status must be new, replied or closed.' });
+    return;
+  }
+
+  const db = getDb();
+  const admin = req.user!;
+  const result = db.prepare(`UPDATE enquiries SET status = ? WHERE id = ?`).run(parsed.data.status, req.params.id);
+
+  if (result.changes === 0) {
+    res.status(404).json({ error: 'Enquiry not found.' });
+    return;
+  }
+
+  recordAudit(db, {
+    actorUserId: admin.id,
+    actorEmail: admin.email,
+    action: 'enquiry.status_changed',
+    subjectType: 'enquiry',
+    subjectId: req.params.id,
+    detail: parsed.data.status,
+    ip: req.ip,
+  });
+
+  res.json({ ok: true, status: parsed.data.status });
+});
+
 const decisionSchema = z.object({
   decision: z.enum(['approve', 'reject']),
   note: z.string().trim().max(500).optional(),

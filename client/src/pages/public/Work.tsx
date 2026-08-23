@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { EditorialImage } from '../../components/public/EditorialImage';
 import { Reveal } from '../../components/public/Reveal';
+import { useDocumentMeta } from '../../components/public/useDocumentMeta';
 import { INSTAGRAM_URL, WORK_CATEGORIES, workEntries, type WorkCategory, type WorkEntry } from '../../content/gallery';
 
 const boardLabel: Record<WorkEntry['board'], string> = {
@@ -52,6 +53,13 @@ function Lightbox({ entry, onClose }: { entry: WorkEntry; onClose: () => void })
 export function Work() {
   const [category, setCategory] = useState<WorkCategory | 'all'>('all');
   const [open, setOpen] = useState<WorkEntry | null>(null);
+
+  useDocumentMeta({
+    title: 'The Work',
+    description:
+      'Campaigns, editorial, runway and e-commerce from the Genesis Model Management boards — women, men and new faces.',
+    path: '/work',
+  });
 
   const entries = category === 'all' ? workEntries : workEntries.filter((w) => w.category === category);
 

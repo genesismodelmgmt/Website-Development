@@ -30,26 +30,33 @@ Two sources feed the pictures, in order of preference:
    Instagram account. The token is a credential: it goes in `server/.env`
    (gitignored) and never into the repo, a commit or a screenshot.
 
+   Meta retired *Instagram Basic Display* on 4 December 2024. The current
+   route is **Instagram API with Instagram Login**, which requires the
+   Instagram account to be a **Business or Creator** account (Instagram app →
+   Settings → Account type). Personal accounts cannot issue a token.
+
    1. At [developers.facebook.com](https://developers.facebook.com/apps),
-      create an app (type: **Consumer**) and add the **Instagram Basic
-      Display** product.
-   2. Under *Basic Display*, add @genesismodelmgmt as an **Instagram Test
-      User**, then accept the invitation from the Instagram account itself
-      (Settings → Apps and Websites → Tester Invites).
-   3. Click **Generate Token** next to that user and copy what it produces.
-   4. Put it in `server/.env` as `INSTAGRAM_ACCESS_TOKEN=IGQ...`
+      create an app and add the **Instagram** product.
+   2. Under *Instagram → API setup with Instagram login*, link
+      @genesismodelmgmt.
+   3. In the same panel, generate a token for that account. Make sure the
+      **`instagram_business_basic`** permission is granted — it is the one
+      that allows reading the account's own media.
+   4. Put it in `server/.env` as `INSTAGRAM_ACCESS_TOKEN=IGA...`
    5. Verify it before trusting the site to it:
 
       ```bash
       npm run instagram:check -w server
       ```
 
-      It calls the Graph API exactly as the site does and reports how many
-      posts came back and how long the token has left.
+      It goes through the same code path as the site, so it only passes if the
+      feed strip will actually render — a token that authenticates but returns
+      no usable images is reported as a failure, not a pass.
 
-   Long-lived tokens last **60 days**. Re-running `instagram:check` refreshes
-   the window; let it lapse and the feed quietly falls back to the curated
-   wall — no breakage, but no live photos either.
+   Long-lived tokens last **60 days**. `instagram:check` reports the days
+   remaining but **cannot refresh the stored token for you** — when it warns,
+   issue a fresh one and replace the value in `server/.env`. If a token does
+   lapse, nothing breaks: the strip falls back to the curated wall.
 2. **The curated wall** — `client/src/content/gallery.ts`. Drop a MediaSlide
    export into `client/public/work/` and point an entry's `image` at it; until
    then each entry renders a composed editorial frame in the house palette, so

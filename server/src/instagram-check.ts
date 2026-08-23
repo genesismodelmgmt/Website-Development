@@ -1,21 +1,14 @@
 /**
  * Verifies the Instagram token before you trust the live site to it.
  *
- *   npm run instagram:check
+ *   npm run instagram:check -w server
  *
- * Reads INSTAGRAM_ACCESS_TOKEN from server/.env, calls the Graph API exactly as
- * the site does, and reports what came back — how many posts, how recent, and
- * when the token itself expires. Prints nothing that could leak the token.
+ * Calls the Graph API through the same code path the site uses, so a pass here
+ * means the feed strip will render — not merely that the token authenticates.
+ * Prints nothing that could leak the token itself.
  */
 import { env } from './env.js';
-
-interface MediaItem {
-  id: string;
-  caption?: string;
-  media_type: string;
-  permalink: string;
-  timestamp: string;
-}
+import { requestInstagramMedia } from './routes/public.js';
 
 const fail = (message: string): never => {
   console.error(`\n  ✗ ${message}\n`);
@@ -26,65 +19,78 @@ if (!env.instagramToken) {
   fail(
     'INSTAGRAM_ACCESS_TOKEN is not set.\n\n' +
       '    Add it to server/.env:\n' +
-      '      INSTAGRAM_ACCESS_TOKEN=IGQ...\n\n' +
+      '      INSTAGRAM_ACCESS_TOKEN=IGA...\n\n' +
       '    See the README (“Imagery”) for how to issue one.',
   );
 }
 
 console.log('\n  Checking the Instagram token…\n');
 
-// 1. The feed itself — the same call the public site makes.
-const fields = 'id,caption,media_type,permalink,timestamp';
-const feedUrl = `https://graph.instagram.com/me/media?fields=${fields}&limit=18&access_token=${encodeURIComponent(env.instagramToken)}`;
-
-let posts: MediaItem[] = [];
+// 1. The feed — the same request, and the same fields, that the site makes. A
+//    token can authenticate happily and still return nothing the site can use,
+//    so this checks for a usable picture rather than a 200.
+let media: Awaited<ReturnType<typeof requestInstagramMedia>> = [];
 try {
-  const response = await fetch(feedUrl, { signal: AbortSignal.timeout(10000) });
-  const payload = (await response.json()) as { data?: MediaItem[]; error?: { message: string; type: string } };
-
-  if (!response.ok || payload.error) {
-    fail(
-      `Instagram rejected the token (HTTP ${response.status}).\n` +
-        `    ${payload.error?.message ?? 'No detail returned.'}\n\n` +
-        '    Common causes: the token expired, it was issued for the wrong\n' +
-        '    account, or the app is missing the instagram_graph_user_media\n' +
-        '    permission.',
-    );
-  }
-
-  posts = payload.data ?? [];
+  media = await requestInstagramMedia(env.instagramToken);
 } catch (error) {
-  fail(`Could not reach the Instagram Graph API: ${error instanceof Error ? error.message : String(error)}`);
+  fail(
+    `Instagram rejected the request.\n    ${error instanceof Error ? error.message : String(error)}\n\n` +
+      '    Common causes: the token has expired, it belongs to a different\n' +
+      '    account, or the app is missing the instagram_business_basic scope.',
+  );
 }
 
-if (posts.length === 0) {
+const usable = media.filter((item) => item.media_url || item.thumbnail_url);
+
+if (media.length === 0) {
   console.log('  ⚠ The token works, but the account returned no media.');
   console.log('    The site will fall back to the curated wall.\n');
   process.exit(0);
 }
 
-const newest = posts[0];
-const age = Math.round((Date.now() - new Date(newest.timestamp).getTime()) / 86_400_000);
+if (usable.length === 0) {
+  fail(
+    `The token works and returned ${media.length} item(s), but none carry an\n` +
+      '    image URL, so the site would show nothing. Check that the app has the\n' +
+      '    instagram_business_basic permission granted.',
+  );
+}
 
-console.log(`  ✓ Token valid — ${posts.length} post${posts.length === 1 ? '' : 's'} returned.`);
-console.log(`    Most recent: ${newest.media_type.toLowerCase()}, ${age} day${age === 1 ? '' : 's'} old`);
-if (newest.caption) console.log(`    “${newest.caption.split('\n')[0].slice(0, 60)}…”`);
+const newest = usable[0]!;
+const days = Math.round((Date.now() - new Date(newest.timestamp).getTime()) / 86_400_000);
 
-// 2. How long the token has left. A long-lived token runs 60 days and should be
-//    refreshed before it lapses, or the feed quietly falls back one morning.
+console.log(`  ✓ Token valid — ${usable.length} usable post${usable.length === 1 ? '' : 's'}.`);
+console.log(`    Most recent: ${newest.media_type.toLowerCase()}, ${days} day${days === 1 ? '' : 's'} old`);
+if (newest.caption) console.log(`    “${newest.caption.split('\n')[0].slice(0, 60)}”`);
+if (usable.length < media.length) {
+  console.log(`    (${media.length - usable.length} item(s) had no image URL and will be skipped.)`);
+}
+
+// 2. How long the token has left. Reported, never silently relied upon: this
+//    script cannot write a refreshed token back into .env, so a token nearing
+//    expiry is something a person has to act on.
 try {
   const response = await fetch(
-    `https://graph.instagram.com/access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(env.instagramToken)}`,
+    `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(env.instagramToken)}`,
     { signal: AbortSignal.timeout(10000) },
   );
-  const payload = (await response.json()) as { expires_in?: number };
-  if (response.ok && payload.expires_in) {
-    const days = Math.floor(payload.expires_in / 86_400);
-    console.log(`\n  Token refreshed — valid for a further ${days} days.`);
-    if (days < 14) console.log('  ⚠ Expiring soon. Re-run this check to refresh it.');
+  const payload = (await response.json().catch(() => ({}))) as { expires_in?: number; error?: { message: string } };
+
+  if (!response.ok || payload.error) {
+    console.log(`\n  ⚠ Could not read the token's expiry: ${payload.error?.message ?? `HTTP ${response.status}`}`);
+    console.log('    Short-lived tokens (1 hour) cannot be refreshed — exchange');
+    console.log('    yours for a long-lived one before relying on it.');
+  } else if (payload.expires_in) {
+    const left = Math.floor(payload.expires_in / 86_400);
+    console.log(`\n  This token has ${left} day${left === 1 ? '' : 's'} left.`);
+    if (left < 14) {
+      console.log('  ⚠ Expiring soon. Issue a fresh long-lived token and replace');
+      console.log('    INSTAGRAM_ACCESS_TOKEN in server/.env — this script reports');
+      console.log('    the expiry but cannot write a new token for you.');
+    }
   }
-} catch {
-  // The feed call is the one that matters; a refresh hiccup is not fatal.
+} catch (error) {
+  console.log(`\n  ⚠ Could not reach the token endpoint: ${error instanceof Error ? error.message : String(error)}`);
 }
 
 console.log('\n  The home page feed strip will show these posts.\n');

@@ -20,6 +20,15 @@ const writeLimiter = rateLimit({
   message: { error: 'Too many requests. Please try again shortly.' },
 });
 
+/** Generous — this is a public page load — but not unbounded. */
+const readLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again shortly.' },
+});
+
 // ---------------------------------------------------------------------------
 // Instagram feed
 //
@@ -39,62 +48,107 @@ export interface InstagramPost {
   timestamp: string;
 }
 
-let feedCache: { fetchedAt: number; posts: InstagramPost[] } | null = null;
+/** The fields the front end needs. Exported so the token check requests the same set. */
+export const INSTAGRAM_FIELDS = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp';
 
-async function fetchInstagramFeed(): Promise<InstagramPost[]> {
-  const ttlMs = env.instagramCacheMinutes * 60 * 1000;
-  if (feedCache && Date.now() - feedCache.fetchedAt < ttlMs) return feedCache.posts;
-
-  const fields = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp';
-  const url = `https://graph.instagram.com/me/media?fields=${fields}&limit=18&access_token=${encodeURIComponent(env.instagramToken)}`;
-
-  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  if (!response.ok) throw new Error(`Instagram responded ${response.status}`);
-
-  const payload = (await response.json()) as {
-    data?: Array<{
-      id: string;
-      caption?: string;
-      media_type: string;
-      media_url?: string;
-      thumbnail_url?: string;
-      permalink: string;
-      timestamp: string;
-    }>;
-  };
-
-  const posts: InstagramPost[] = (payload.data ?? [])
-    .filter((item) => item.media_url || item.thumbnail_url)
-    .map((item) => ({
-      id: item.id,
-      caption: item.caption ?? null,
-      mediaType: item.media_type,
-      // Videos render their thumbnail; the permalink carries people to the reel.
-      mediaUrl: (item.media_type === 'VIDEO' ? item.thumbnail_url : item.media_url) ?? item.media_url ?? '',
-      thumbnailUrl: item.thumbnail_url ?? null,
-      permalink: item.permalink,
-      timestamp: item.timestamp,
-    }));
-
-  feedCache = { fetchedAt: Date.now(), posts };
-  return posts;
+export interface InstagramMedia {
+  id: string;
+  caption?: string;
+  media_type: string;
+  media_url?: string;
+  thumbnail_url?: string;
+  permalink: string;
+  timestamp: string;
 }
 
-publicRouter.get('/instagram', async (_req, res) => {
+/** Shapes one Graph API item, dropping anything with no usable picture. */
+function toPost(item: InstagramMedia): InstagramPost | null {
+  // Videos have a poster frame in thumbnail_url and no still in media_url;
+  // images are the other way round. Either may stand in for the other, but an
+  // item with neither has no picture to show and is dropped rather than
+  // rendered as <img src="">, which re-requests the current page.
+  const mediaUrl = (item.media_type === 'VIDEO' ? item.thumbnail_url ?? item.media_url : item.media_url ?? item.thumbnail_url) ?? '';
+  if (!mediaUrl) return null;
+
+  return {
+    id: item.id,
+    caption: item.caption ?? null,
+    mediaType: item.media_type,
+    mediaUrl,
+    thumbnailUrl: item.thumbnail_url ?? null,
+    permalink: item.permalink,
+    timestamp: item.timestamp,
+  };
+}
+
+export async function requestInstagramMedia(token: string, limit = 18): Promise<InstagramMedia[]> {
+  const url = `https://graph.instagram.com/me/media?fields=${INSTAGRAM_FIELDS}&limit=${limit}&access_token=${encodeURIComponent(token)}`;
+  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const payload = (await response.json().catch(() => ({}))) as { data?: InstagramMedia[]; error?: { message: string } };
+
+  if (!response.ok || payload.error) {
+    throw new Error(payload.error?.message ?? `Instagram responded ${response.status}`);
+  }
+  return payload.data ?? [];
+}
+
+/**
+ * `ok: false` marks a failed attempt. Failures are cached too — for a shorter
+ * window — so an expired token cannot turn every page view into its own 8s
+ * upstream call and burn the account's Graph quota.
+ */
+let feedCache: { fetchedAt: number; ok: boolean; posts: InstagramPost[] } | null = null;
+
+/** One in-flight refresh at a time; concurrent callers await the same promise. */
+let inFlight: Promise<InstagramPost[]> | null = null;
+
+function cacheIsFresh(): boolean {
+  if (!feedCache) return false;
+  const minutes = feedCache.ok ? env.instagramCacheMinutes : env.instagramErrorCacheMinutes;
+  return Date.now() - feedCache.fetchedAt < minutes * 60 * 1000;
+}
+
+async function fetchInstagramFeed(): Promise<InstagramPost[]> {
+  if (cacheIsFresh()) return feedCache!.posts;
+  if (inFlight) return inFlight;
+
+  inFlight = (async () => {
+    try {
+      const posts = (await requestInstagramMedia(env.instagramToken))
+        .map(toPost)
+        .filter((post): post is InstagramPost => post !== null);
+      feedCache = { fetchedAt: Date.now(), ok: true, posts };
+      return posts;
+    } catch (error) {
+      // Keep serving the last good feed while the failure is remembered, so a
+      // token that lapsed overnight does not blank the band immediately.
+      // eslint-disable-next-line no-console
+      console.warn('[instagram]', error instanceof Error ? error.message : error);
+      const stale = feedCache?.ok ? feedCache.posts : [];
+      feedCache = { fetchedAt: Date.now(), ok: false, posts: stale };
+      return stale;
+    } finally {
+      inFlight = null;
+    }
+  })();
+
+  return inFlight;
+}
+
+/** Test hook: the cache is process-wide, so a suite must be able to clear it. */
+export function resetInstagramCache(): void {
+  feedCache = null;
+  inFlight = null;
+}
+
+publicRouter.get('/instagram', readLimiter, async (_req, res) => {
   if (!env.instagramToken) {
     res.json({ configured: false, posts: [] });
     return;
   }
 
-  try {
-    const posts = await fetchInstagramFeed();
-    res.json({ configured: true, posts });
-  } catch (error) {
-    // A stale feed beats an empty page; an empty feed beats an error page.
-    // eslint-disable-next-line no-console
-    console.warn('[instagram]', error instanceof Error ? error.message : error);
-    res.json({ configured: true, posts: feedCache?.posts ?? [] });
-  }
+  const posts = await fetchInstagramFeed();
+  res.json({ configured: true, posts });
 });
 
 // ---------------------------------------------------------------------------
@@ -163,6 +217,9 @@ publicRouter.post('/enquiries', writeLimiter, async (req, res) => {
     ip: req.ip,
   });
 
+  // The row above is the system of record; this notification is a convenience.
+  // Until a mail transport is configured `deliver` only logs, so the enquiry is
+  // read from the agency queue (GET /api/admin/enquiries) rather than lost.
   await deliver({
     to: 'bookings@genesismodelmgmt.co.uk',
     subject: `New ${kind} enquiry — ${fullName}${company ? `, ${company}` : ''}`,

@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { EditorialImage } from '../../components/public/EditorialImage';
 import { InstagramStrip } from '../../components/public/InstagramStrip';
 import { Reveal } from '../../components/public/Reveal';
+import { useDocumentMeta } from '../../components/public/useDocumentMeta';
 import { workEntries } from '../../content/gallery';
 import { categoryLabel, journalArticles, keynotes } from '../../content/journal';
 
@@ -109,9 +110,20 @@ export function Home() {
     if (hash === '#enquire') document.getElementById('enquire')?.scrollIntoView({ behavior: 'smooth' });
   }, [hash]);
 
+  useDocumentMeta({
+    title: 'Genesis Model Management',
+    description:
+      'A London model agency representing women, men and new faces for campaigns, editorial, runway and e-commerce.',
+    path: '/',
+  });
+
+  // Content-driven, so the page must survive the manifest being edited: an
+  // entry un-featured or a keynote removed should not white-screen the site.
   const featured = workEntries.filter((w) => w.featured);
+  const heroPair = featured.slice(0, 3);
   const articles = journalArticles.filter((a) => a.featured).slice(0, 3);
   const heroKeynote = keynotes[0];
+  const sideKeynotes = keynotes.slice(3);
 
   return (
     <>
@@ -141,24 +153,28 @@ export function Home() {
             </Reveal>
           </div>
 
-          <Reveal delay={150} className="hidden lg:block">
-            <div className="grid grid-cols-2 gap-3">
-              <EditorialImage entry={featured[0]} className="translate-y-6" />
-              <EditorialImage entry={{ ...featured[2], aspect: 'portrait' }} />
-            </div>
-          </Reveal>
+          {heroPair.length >= 2 ? (
+            <Reveal delay={150} className="hidden lg:block">
+              <div className="grid grid-cols-2 gap-3">
+                <EditorialImage entry={{ ...heroPair[0]!, aspect: 'portrait' }} className="translate-y-6" />
+                <EditorialImage entry={{ ...heroPair[heroPair.length - 1]!, aspect: 'portrait' }} />
+              </div>
+            </Reveal>
+          ) : null}
         </div>
       </section>
 
       {/* ——— keynote band ——— */}
-      <section className="border-b border-rule bg-brass-soft">
-        <div className="mx-auto max-w-6xl px-6 py-10">
-          <Reveal>
-            <p className="label-caps !text-brass">{heroKeynote.topic}</p>
-            <p className="mt-2 max-w-3xl font-display text-xl leading-relaxed text-ink sm:text-2xl">{heroKeynote.note}</p>
-          </Reveal>
-        </div>
-      </section>
+      {heroKeynote ? (
+        <section className="border-b border-rule bg-brass-soft">
+          <div className="mx-auto max-w-6xl px-6 py-10">
+            <Reveal>
+              <p className="label-caps !text-brass">{heroKeynote.topic}</p>
+              <p className="mt-2 max-w-3xl font-display text-xl leading-relaxed text-ink sm:text-2xl">{heroKeynote.note}</p>
+            </Reveal>
+          </div>
+        </section>
+      ) : null}
 
       {/* ——— featured work ——— */}
       <section className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
@@ -233,7 +249,7 @@ export function Home() {
               invoice is already there.
             </p>
             <div className="mt-8 space-y-5 border-l-2 border-brass pl-5">
-              {keynotes.slice(3).map((k) => (
+              {sideKeynotes.map((k) => (
                 <div key={k.topic}>
                   <p className="label-caps !text-brass">{k.topic}</p>
                   <p className="mt-1 text-sm leading-relaxed text-ink-soft">{k.note}</p>

@@ -17,6 +17,13 @@ interface InstagramPost {
  */
 export function InstagramStrip() {
   const [posts, setPosts] = useState<InstagramPost[]>([]);
+  /**
+   * If the CDN images themselves fail — a content policy blocking the host, an
+   * expired media URL — the whole band reverts to the curated wall rather than
+   * showing a row of broken tiles. Fetching successfully is not the same as
+   * rendering successfully, and only the browser knows the difference.
+   */
+  const [imagesBroken, setImagesBroken] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,6 +41,7 @@ export function InstagramStrip() {
   }, []);
 
   const fallback = workEntries.filter((w) => w.featured).slice(0, 4);
+  const showLive = posts.length > 0 && !imagesBroken;
 
   return (
     <section className="border-y border-rule bg-paper">
@@ -51,11 +59,17 @@ export function InstagramStrip() {
         </Reveal>
 
         <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {posts.length > 0
+          {showLive
             ? posts.map((post, i) => (
                 <Reveal key={post.id} delay={i * 60}>
                   <a href={post.permalink} target="_blank" rel="noreferrer" className="img-frame block aspect-square" title={post.caption ?? 'Open on Instagram'}>
-                    <img src={post.mediaUrl} alt={post.caption ?? 'Genesis Model Management on Instagram'} loading="lazy" className="h-full w-full object-cover" />
+                    <img
+                      src={post.mediaUrl}
+                      alt={post.caption ?? 'Genesis Model Management on Instagram'}
+                      loading="lazy"
+                      onError={() => setImagesBroken(true)}
+                      className="h-full w-full object-cover"
+                    />
                   </a>
                 </Reveal>
               ))

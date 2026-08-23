@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { Reveal } from '../../components/public/Reveal';
+import { useDocumentMeta } from '../../components/public/useDocumentMeta';
 import { categoryLabel, findArticle, journalArticles } from '../../content/journal';
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -9,9 +9,12 @@ export function JournalArticle() {
   const { slug } = useParams();
   const article = slug ? findArticle(slug) : undefined;
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [slug]);
+  // Hooks must run unconditionally, so this precedes the redirect below.
+  useDocumentMeta({
+    title: article?.title ?? 'Journal',
+    description: article?.standfirst ?? 'Industry news, insights and guidance from Genesis Model Management.',
+    path: `/journal/${slug ?? ''}`,
+  });
 
   if (!article) return <Navigate to="/journal" replace />;
 
