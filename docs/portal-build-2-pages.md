@@ -49,9 +49,19 @@ Gated on `portal_accounts.is_agency`. The queue of `portal_link_requests`: who i
 
 Non agency users must never see this route or its data.
 
-## Wiring it into the site
+## Wiring it into the site, this part matters
 
-Add a discreet "Client portal" link in the site header and footer. Signed out it goes to `/portal/sign-in`, signed in it goes to `/portal`. Keep it understated, it is not a call to action competing with the enquiry flow.
+People must be able to find the sign in from the website itself, not by knowing the URL.
+
+- Add a "Client portal" link in the site header, and one in the footer. Signed out it points at `/portal/sign-in`, signed in it points at `/portal` and reads "Your account". Keep it understated in the house style, it is not a call to action competing with the enquiry flow.
+- On `/portal/sign-in`, the Continue button after the reveal currently points at `/`, because the portal did not exist when it was written. Point it at `/portal`.
+- `/portal` itself, when signed out, redirects to `/portal/sign-in` rather than showing an error. When signed in it shows the overview.
+- Anyone already signed in who opens `/portal/sign-in` goes straight to `/portal`.
+- The existing `/clients` page is the public facing page for clients. Add a quiet line there linking to the portal for clients who already work with Genesis.
+
+## Carry the foundation fix through
+
+The claim step can now come back linked with history but no company name on file, flagged for confirmation. Handle that in the portal too: show the account without a company name rather than a placeholder, and offer the same quiet prompt to confirm the company on the account page.
 
 Add `/portal` and everything under it to `robots.txt` as disallowed, and keep it out of `sitemap.xml`.
 
