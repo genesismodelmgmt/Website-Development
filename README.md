@@ -25,6 +25,31 @@ Two sources feed the pictures, in order of preference:
    the account's latest posts, cached server-side for
    `INSTAGRAM_CACHE_MINUTES` (default 10). No token, no problem: the strip
    falls back to the curated wall and never renders empty.
+
+   **Issuing the token** — done once, by someone logged into the agency's
+   Instagram account. The token is a credential: it goes in `server/.env`
+   (gitignored) and never into the repo, a commit or a screenshot.
+
+   1. At [developers.facebook.com](https://developers.facebook.com/apps),
+      create an app (type: **Consumer**) and add the **Instagram Basic
+      Display** product.
+   2. Under *Basic Display*, add @genesismodelmgmt as an **Instagram Test
+      User**, then accept the invitation from the Instagram account itself
+      (Settings → Apps and Websites → Tester Invites).
+   3. Click **Generate Token** next to that user and copy what it produces.
+   4. Put it in `server/.env` as `INSTAGRAM_ACCESS_TOKEN=IGQ...`
+   5. Verify it before trusting the site to it:
+
+      ```bash
+      npm run instagram:check -w server
+      ```
+
+      It calls the Graph API exactly as the site does and reports how many
+      posts came back and how long the token has left.
+
+   Long-lived tokens last **60 days**. Re-running `instagram:check` refreshes
+   the window; let it lapse and the feed quietly falls back to the curated
+   wall — no breakage, but no live photos either.
 2. **The curated wall** — `client/src/content/gallery.ts`. Drop a MediaSlide
    export into `client/public/work/` and point an entry's `image` at it; until
    then each entry renders a composed editorial frame in the house palette, so
