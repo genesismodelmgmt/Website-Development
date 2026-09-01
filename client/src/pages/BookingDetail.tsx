@@ -58,12 +58,7 @@ export function BookingDetail() {
                         {[model.board ? titleCase(model.board) : null, model.role].filter(Boolean).join(' · ')}
                       </p>
                     </div>
-                    <div className="flex items-center gap-4">
-                      {model.dayRatePence ? (
-                        <span className="text-sm text-ink-soft">{money(model.dayRatePence)}</span>
-                      ) : null}
-                      <StatusBadge status={model.status} />
-                    </div>
+                    <StatusBadge status={model.status} />
                   </li>
                 ))}
               </ul>
@@ -111,13 +106,12 @@ export function BookingDetail() {
           <section className="card p-6">
             <h2 className="label-caps">Fees</h2>
             <dl className="mt-4 space-y-2 text-sm">
-              <Row label="Model fees" value={money(booking.feePence, true)} />
-              <Row label="Agency fee" value={money(booking.agencyFeePence, true)} />
-              <div className="border-t border-rule pt-2">
-                <Row label="Total" value={money(booking.totalPence, true)} strong />
-              </div>
+              <Row label="Total" value={money(booking.totalPence, true)} strong />
             </dl>
-            <p className="mt-3 text-xs text-ink-faint">Excludes VAT, which is shown on the invoice.</p>
+            <p className="mt-3 text-xs text-ink-faint">
+              The booking total, excluding VAT — VAT is shown on the invoice. For a breakdown of what was agreed, ask
+              your booker.
+            </p>
           </section>
 
           {invoices.length > 0 ? (

@@ -11,7 +11,6 @@ interface AccountResponse {
     clientType: string;
     status: string;
     primaryContactName: string | null;
-    primaryContactEmail: string | null;
     phone: string | null;
     billingAddress: string | null;
     accountManager: string | null;
@@ -54,7 +53,11 @@ export function Account() {
         <section className="card p-6">
           <h2 className="font-display text-xl text-ink">Your company</h2>
           {!client ? (
-            <p className="mt-3 text-sm text-ink-soft">No company record is linked to this login yet.</p>
+            <p className="mt-3 text-sm text-ink-soft">
+              {user.linkStatus === 'pending_review'
+                ? 'We are still confirming which company this login belongs to. Your company details will appear here once a member of the Genesis team has approved your access.'
+                : 'No company record is linked to this login yet.'}
+            </p>
           ) : (
             <>
               <div className="mt-4 flex items-center gap-3">

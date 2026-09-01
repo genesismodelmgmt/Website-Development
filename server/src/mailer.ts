@@ -15,12 +15,26 @@ export interface OutboundEmail {
   body: string;
 }
 
+/**
+ * Test hook: what deliver() has handled, most recent last, so a suite can assert
+ * an email was raised — and read a code out of one — without a transport and
+ * without any endpoint returning the code in its response. Capped so a long-
+ * running dev server does not grow it without bound, and never filled in
+ * production.
+ */
+export const outbox: OutboundEmail[] = [];
+const OUTBOX_LIMIT = 50;
+
 export async function deliver(message: OutboundEmail): Promise<void> {
   if (env.isProduction) {
     // eslint-disable-next-line no-console
     console.info(`[mail] queued to=${message.to} subject="${message.subject}" (no transport configured)`);
     return;
   }
+
+  outbox.push(message);
+  if (outbox.length > OUTBOX_LIMIT) outbox.shift();
+
   // eslint-disable-next-line no-console
   console.info(
     ['', '─── outbound email ───', `to:      ${message.to}`, `subject: ${message.subject}`, '', message.body, '──────────────────────', ''].join(
@@ -41,6 +55,25 @@ export function verificationEmail(to: string, code: string): OutboundEmail {
       `It expires in ${env.codeTtlMinutes} minutes.`,
       '',
       'If you did not request this, you can ignore this email — no account has been created.',
+      '',
+      'Genesis Model Management',
+    ].join('\n'),
+  };
+}
+
+export function passwordResetEmail(to: string, code: string): OutboundEmail {
+  return {
+    to,
+    subject: 'Reset your Genesis client portal password',
+    body: [
+      'Use this code to choose a new password:',
+      '',
+      `    ${code}`,
+      '',
+      `It expires in ${env.codeTtlMinutes} minutes and can only be used once.`,
+      '',
+      'If you did not ask to reset your password you can ignore this email — your',
+      'current password still works and nothing has changed.',
       '',
       'Genesis Model Management',
     ].join('\n'),

@@ -11,7 +11,7 @@
     "seed": "tsx src/seed.ts",
     "db:reset": "tsx src/seed.ts --reset",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test --import tsx test/*.test.ts"
+    "test": "node --test --experimental-test-isolation=none --import tsx test/*.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

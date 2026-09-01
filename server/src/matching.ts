@@ -94,12 +94,19 @@ export function findClientMatches(db: Db, rawEmail: string): ClientMatch[] {
   };
 
   // 1. The address is a known contact on a client record.
+  //
+  // Only a contact still marked active counts. Changing roles inside a company
+  // is not the same event as leaving it, and the schema distinguishes them: an
+  // address that was deactivated when its owner left must not still auto-link a
+  // stranger — or whoever now receives that mailbox on a catch-all — to years of
+  // fees, invoices and correspondence with no human in the loop.
   const contactRows = db
     .prepare(
       `SELECT c.id AS id, c.company_name AS company_name, cc.full_name AS contact_name
          FROM client_contacts cc
          JOIN clients c ON c.id = cc.client_id
         WHERE cc.email = ?
+          AND cc.active = 1
           AND c.status != 'archived'`,
     )
     .all(email) as Array<ClientRow & { contact_name: string | null }>;

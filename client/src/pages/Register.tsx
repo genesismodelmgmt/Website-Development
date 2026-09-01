@@ -226,6 +226,22 @@ export function Register() {
           >
             Use a different address
           </button>
+
+          {/* An address that already has a login is sent no code at all — the
+              step above cannot say so without disclosing who is registered — so
+              the only symptom is a code that never works. Both ways out of that
+              have to be on this step, or there is no way out of it. */}
+          <p className="border-t border-rule pt-5 text-center text-sm text-ink-soft">
+            No code arriving? You may already have an account.{' '}
+            <Link to="/sign-in" className="text-brass underline underline-offset-2 hover:text-ink">
+              Sign in
+            </Link>{' '}
+            or{' '}
+            <Link to="/reset-password" className="text-brass underline underline-offset-2 hover:text-ink">
+              reset your password
+            </Link>
+            .
+          </p>
         </form>
       ) : null}
 
@@ -312,28 +328,35 @@ function MatchPanel({ match }: { match: MatchResult }) {
       <p className="mt-2 font-display text-2xl text-ink">{match.companyName}</p>
       <p className="mt-1 text-xs text-ink-soft">{match.reason}</p>
 
-      <dl className="mt-5 grid grid-cols-3 gap-3 border-t border-black/10 pt-4">
-        <div>
-          <dt className="label-caps">Bookings</dt>
-          <dd className="font-display text-2xl text-ink">{history.bookings}</dd>
-        </div>
-        <div>
-          <dt className="label-caps">Messages</dt>
-          <dd className="font-display text-2xl text-ink">{history.communications}</dd>
-        </div>
-        <div>
-          <dt className="label-caps">Invoices</dt>
-          <dd className="font-display text-2xl text-ink">{history.invoices}</dd>
-        </div>
-      </dl>
+      {/* On a match still waiting for a human the server sends zeroed counts on
+          purpose, so there is nothing here to show — printing "0 bookings" would
+          be a plain lie about a company that may have years of history. */}
+      {pending ? null : (
+        <>
+          <dl className="mt-5 grid grid-cols-3 gap-3 border-t border-black/10 pt-4">
+            <div>
+              <dt className="label-caps">Bookings</dt>
+              <dd className="font-display text-2xl text-ink">{history.bookings}</dd>
+            </div>
+            <div>
+              <dt className="label-caps">Messages</dt>
+              <dd className="font-display text-2xl text-ink">{history.communications}</dd>
+            </div>
+            <div>
+              <dt className="label-caps">Invoices</dt>
+              <dd className="font-display text-2xl text-ink">{history.invoices}</dd>
+            </div>
+          </dl>
 
-      {history.firstBookedOn ? (
-        <p className="mt-4 text-xs text-ink-soft">Working with Genesis since {longDate(history.firstBookedOn)}.</p>
-      ) : null}
+          {history.firstBookedOn ? (
+            <p className="mt-4 text-xs text-ink-soft">Working with Genesis since {longDate(history.firstBookedOn)}.</p>
+          ) : null}
+        </>
+      )}
 
       <p className="mt-4 text-sm leading-relaxed text-ink-soft">
         {pending
-          ? 'We recognised your company domain but not your exact address, so a member of the Genesis team will confirm your access before this history opens up. You can finish setting up your account now.'
+          ? 'We recognised your company domain but not your exact address. A member of the Genesis team will confirm it is you before anything on this account opens up, so we are not showing you what we hold until they have. You can finish setting up your account now and we will email you when it is approved.'
           : 'All of it will be linked to your account the moment you finish setting up.'}
       </p>
     </div>

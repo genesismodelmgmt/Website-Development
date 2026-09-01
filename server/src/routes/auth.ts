@@ -16,7 +16,7 @@ import {
 } from '../auth.js';
 import { getDb, newId, nowIso, recordAudit } from '../db.js';
 import { env } from '../env.js';
-import { deliver, verificationEmail } from '../mailer.js';
+import { deliver, passwordResetEmail, verificationEmail } from '../mailer.js';
 import {
   decideLink,
   emailDomain,
@@ -24,6 +24,7 @@ import {
   isConsumerDomain,
   normaliseEmail,
   summariseHistory,
+  type HistorySummary,
 } from '../matching.js';
 
 export const authRouter = Router();
@@ -34,6 +35,20 @@ const codeRequestLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many codes requested. Please try again shortly.' },
+});
+
+/**
+ * The reset pair gets its own budget on the same terms. Sharing the
+ * registration limiter would mean the client who has just exhausted it guessing
+ * at codes on the register form — which is exactly how someone arrives here —
+ * finds the way out locked too.
+ */
+const resetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: env.codeRequestLimit,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many reset attempts. Please try again shortly.' },
 });
 
 const loginLimiter = rateLimit({
@@ -153,7 +168,13 @@ authRouter.post('/register/verify', codeRequestLimiter, (req, res) => {
     return;
   }
 
-  const summary = summariseHistory(db, outcome.match.clientId);
+  // The counts are a disclosure in their own right — they confirm the company is
+  // a Genesis client and say roughly how much business it does — so on a match
+  // that still needs a human they stay at zero. Only an approved link opens them.
+  const summary: HistorySummary =
+    outcome.kind === 'linked'
+      ? summariseHistory(db, outcome.match.clientId)
+      : { bookings: 0, communications: 0, invoices: 0, firstBookedOn: null, lastActivityOn: null };
 
   res.json({
     registrationToken,
@@ -337,6 +358,99 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
   res.json({ user: toSessionUser({ ...row, last_login_at: nowIso() }) });
 });
 
+// ---------------------------------------------------------------------------
+// Password reset
+//
+// The way back in for a client who registered months ago and has forgotten. It
+// reuses the registration code machinery unchanged — CSPRNG, hashed at rest,
+// timing-safe comparison, single-use, attempt-capped — and holds the same line
+// on disclosure: the request response is identical whether or not the address
+// has an account, so this cannot be used to find out who does.
+//
+// That uniformity is why no code is ever returned here, in any environment. The
+// registration reveal can afford to differ by branch; this one cannot, because
+// the presence of the field would itself be the answer. Read it from the server
+// log, or from the mailer's outbox in a test.
+// ---------------------------------------------------------------------------
+
+const resetRequestSchema = z.object({ email: emailField });
+
+authRouter.post('/password/reset-request', resetLimiter, async (req, res) => {
+  const parsed = resetRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Please check your email address.' });
+    return;
+  }
+
+  const db = getDb();
+  const { email } = parsed.data;
+  const existingUser = db.prepare(`SELECT id FROM users WHERE email = ?`).get(email) as { id: string } | undefined;
+
+  if (existingUser) {
+    const code = createVerificationCode(db, email, 'reset');
+    await deliver(passwordResetEmail(email, code));
+  }
+
+  recordAudit(db, {
+    actorUserId: existingUser?.id ?? null,
+    actorEmail: email,
+    action: 'password.reset_requested',
+    ip: req.ip,
+    detail: existingUser ? 'code sent' : 'no account for that address',
+  });
+
+  res.json({ ok: true, message: 'If that address has an account, a six-digit code is on its way.' });
+});
+
+const resetConfirmSchema = z.object({
+  email: emailField,
+  code: z.string().trim().regex(/^\d{6}$/, 'Enter the six-digit code.'),
+  password: passwordField,
+});
+
+authRouter.post('/password/reset', resetLimiter, async (req, res) => {
+  const parsed = resetConfirmSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Please check the code and your new password.' });
+    return;
+  }
+
+  const db = getDb();
+  const { email, code, password } = parsed.data;
+  const check = consumeVerificationCode(db, email, 'reset', code);
+
+  if (!check.ok) {
+    const messages: Record<string, string> = {
+      not_found: 'That code has expired or was already used. Request a new one.',
+      expired: 'That code has expired. Request a new one.',
+      too_many_attempts: 'Too many incorrect attempts. Request a new code.',
+      mismatch: 'That code is not right. Check your email and try again.',
+    };
+    res.status(400).json({ error: messages[check.reason] });
+    return;
+  }
+
+  const row = db.prepare(`SELECT * FROM users WHERE email = ?`).get(email) as UserRow | undefined;
+  if (!row) {
+    // A live reset code only ever exists for an address that had an account when
+    // it was requested, so this is the deleted-in-between case, not a probe.
+    res.status(400).json({ error: 'That code has expired or was already used. Request a new one.' });
+    return;
+  }
+
+  const passwordHash = await hashPassword(password);
+  const now = nowIso();
+
+  // Signing in is the next thing they will do and the code has just proven they
+  // own the mailbox, so do it for them rather than sending them round again.
+  db.prepare(`UPDATE users SET password_hash = ?, last_login_at = ? WHERE id = ?`).run(passwordHash, now, row.id);
+  issueSession(res, row);
+
+  recordAudit(db, { actorUserId: row.id, actorEmail: email, action: 'password.reset', ip: req.ip });
+
+  res.json({ user: toSessionUser({ ...row, last_login_at: now }) });
+});
+
 authRouter.post('/logout', (req, res) => {
   if (req.user) {
     recordAudit(getDb(), { actorUserId: req.user.id, actorEmail: req.user.email, action: 'logout', ip: req.ip });
@@ -348,8 +462,12 @@ authRouter.post('/logout', (req, res) => {
 authRouter.get('/me', requireAuth, (req, res) => {
   const db = getDb();
   const user = req.user!;
-  const client = user.clientId
-    ? (db.prepare(`SELECT id, company_name, status, account_manager FROM clients WHERE id = ?`).get(user.clientId) as
+  // Same rule as every client-scoped read: a pending_review account has a
+  // client_id but no permission to see whose it is, so the company block stays
+  // shut until the link is approved. The header falls back to the user's email.
+  const scopedClientId = user.linkStatus === 'linked' ? user.clientId : null;
+  const client = scopedClientId
+    ? (db.prepare(`SELECT id, company_name, status, account_manager FROM clients WHERE id = ?`).get(scopedClientId) as
         | { id: string; company_name: string; status: string; account_manager: string | null }
         | undefined)
     : undefined;

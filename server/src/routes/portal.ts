@@ -64,7 +64,6 @@ function withModels(bookings: BookingRow[]): Array<ReturnType<typeof mapBooking>
       name: row.model_name,
       board: row.board,
       role: row.role,
-      dayRatePence: row.day_rate_pence,
       status: row.status,
     });
     byBooking.set(row.booking_id, list);
@@ -73,6 +72,20 @@ function withModels(bookings: BookingRow[]): Array<ReturnType<typeof mapBooking>
   return bookings.map((booking) => ({ ...mapBooking(booking), models: byBooking.get(booking.id) ?? [] }));
 }
 
+/**
+ * What the client is told about money on a booking is the total they were
+ * charged, and nothing that decomposes it.
+ *
+ * `agency_fee_pence` is the agency's commission and was never meant to leave the
+ * building — the same system goes to real trouble to keep internal margin notes
+ * back via `visible_to_client`. `fee_pence` (the model fee *before* commission)
+ * and the per-model `day_rate_pence` are withheld for the same reason and not a
+ * softer one: publish any of them next to the total and the commission is a
+ * subtraction away, so withholding one and not the others withholds nothing.
+ *
+ * VAT, net and total per invoice remain on the invoice, which is the document
+ * the client was actually billed on.
+ */
 const mapBooking = (row: BookingRow) => ({
   id: row.id,
   reference: row.reference,
@@ -83,8 +96,6 @@ const mapBooking = (row: BookingRow) => ({
   endDate: row.end_date,
   location: row.location,
   usageTerms: row.usage_terms,
-  feePence: row.fee_pence,
-  agencyFeePence: row.agency_fee_pence,
   totalPence: row.fee_pence + row.agency_fee_pence,
   currency: row.currency,
   booker: row.booker,
@@ -332,7 +343,6 @@ portalRouter.get('/bookings/:id', (req, res) => {
         name: m.model_name,
         board: m.board,
         role: m.role,
-        dayRatePence: m.day_rate_pence,
         status: m.status,
       })),
     },
@@ -472,12 +482,23 @@ portalRouter.get('/invoices', (req, res) => {
 
 // --- account ----------------------------------------------------------------
 
+/**
+ * The one handler that deliberately still answers an account awaiting approval,
+ * because it is the page that explains the wait. It therefore cannot call
+ * resolveClientScope, which 403s a pending account — so it applies the same link
+ * status rule itself, once, and everything client-scoped hangs off it. A
+ * pending_review user has client_id populated, so `user.clientId` on its own is
+ * not an authorisation: without this gate the company's billing address, main
+ * contact and account manager go out before a human has approved anything.
+ */
 portalRouter.get('/account', (req, res) => {
   const user = req.user!;
   const db = getDb();
 
-  const client = user.clientId
-    ? (db.prepare(`SELECT * FROM clients WHERE id = ?`).get(user.clientId) as
+  const scopedClientId = user.linkStatus === 'linked' ? user.clientId : null;
+
+  const client = scopedClientId
+    ? (db.prepare(`SELECT * FROM clients WHERE id = ?`).get(scopedClientId) as
         | {
             id: string;
             company_name: string;
@@ -493,16 +514,15 @@ portalRouter.get('/account', (req, res) => {
         | undefined)
     : undefined;
 
-  const teammates =
-    user.clientId && user.linkStatus === 'linked'
-      ? (db
-          .prepare(
-            `SELECT full_name, email, last_login_at FROM users
+  const teammates = scopedClientId
+    ? (db
+        .prepare(
+          `SELECT full_name, email, last_login_at FROM users
               WHERE client_id = ? AND link_status = 'linked'
               ORDER BY full_name`,
-          )
-          .all(user.clientId) as Array<{ full_name: string; email: string; last_login_at: string | null }>)
-      : [];
+        )
+        .all(scopedClientId) as Array<{ full_name: string; email: string; last_login_at: string | null }>)
+    : [];
 
   const pendingRequest = db
     .prepare(`SELECT status, requested_at, match_reason FROM link_requests WHERE user_id = ? ORDER BY requested_at DESC LIMIT 1`)
@@ -517,7 +537,8 @@ portalRouter.get('/account', (req, res) => {
           clientType: client.client_type,
           status: client.status,
           primaryContactName: client.primary_contact_name,
-          primaryContactEmail: client.primary_contact_email,
+          // primary_contact_email is deliberately not sent: nothing renders it,
+          // and an address in a payload is one more thing to leak in a screenshot.
           phone: client.phone,
           billingAddress: client.billing_address,
           accountManager: client.account_manager,

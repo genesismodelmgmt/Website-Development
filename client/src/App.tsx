@@ -11,6 +11,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Invoices } from './pages/Invoices';
 import { LinkRequests } from './pages/LinkRequests';
 import { Register } from './pages/Register';
+import { ResetPassword } from './pages/ResetPassword';
 import { SignIn } from './pages/SignIn';
 
 function RequireAuth({ children, agencyOnly = false }: { children: ReactNode; agencyOnly?: boolean }) {
@@ -56,6 +57,14 @@ export function App() {
             element={
               <RedirectIfSignedIn>
                 <Register />
+              </RedirectIfSignedIn>
+            }
+          />
+          <Route
+            path="/reset-password"
+            element={
+              <RedirectIfSignedIn>
+                <ResetPassword />
               </RedirectIfSignedIn>
             }
           />

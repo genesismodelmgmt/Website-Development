@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 
@@ -22,6 +25,7 @@ const { createApp } = await import('../src/app.js');
 const { findClientMatches, decideLink, normaliseEmail, emailDomain, isConsumerDomain } = await import(
   '../src/matching.js'
 );
+const { outbox } = await import('../src/mailer.js');
 const bcrypt = (await import('bcryptjs')).default;
 
 const db = openDatabase(process.env.DATABASE_FILE!);
@@ -118,6 +122,20 @@ function seedFixtures(): void {
      VALUES (?, ?, 'Freya Lambert', 'freya@northbankstudios.test', 'Head of Brand', 1, 1, ?)`,
   ).run(newId(), NORTHBANK, now);
 
+  // A producer who ran the account and has since left. The row stays for the
+  // agency's own records; it must no longer open the portal.
+  db.prepare(
+    `INSERT INTO client_contacts (id, client_id, full_name, email, role, is_primary, active, created_at)
+     VALUES (?, ?, 'Departed Producer', 'departed@northbankstudios.test', 'Producer', 0, 0, ?)`,
+  ).run(newId(), NORTHBANK, now);
+
+  // The same, but on an address whose domain is not on file anywhere, so there is
+  // no weaker match underneath and the answer has to come from the active flag.
+  db.prepare(
+    `INSERT INTO client_contacts (id, client_id, full_name, email, role, is_primary, active, created_at)
+     VALUES (?, ?, 'Departed Buyer', 'departed@someoldshop.test', 'Buyer', 0, 0, ?)`,
+  ).run(newId(), AURELIA, now);
+
   for (const [id, clientId, reference, title, status, startDate] of [
     // Dated in the future and confirmed, so it also appears in the dashboard's
     // "coming up" list — that is the shape that regressed.
@@ -184,6 +202,26 @@ describe('email matching', () => {
   it('never matches on a consumer mailbox domain', () => {
     assert.deepEqual(findClientMatches(db, 'someone@gmail.com'), []);
     assert.equal(decideLink([]).kind, 'new_customer');
+  });
+
+  it('does not auto-link a contact who has been deactivated', () => {
+    // The mailbox may still work, and may even have been handed on. Having once
+    // been on the account is not authorisation to read it now.
+    const matches = findClientMatches(db, 'departed@someoldshop.test');
+    assert.deepEqual(matches, [], 'a deactivated contact should produce no match at all');
+    assert.equal(decideLink(matches).kind, 'new_customer');
+  });
+
+  it('drops a deactivated contact to the domain grade rather than an exact one', () => {
+    const matches = findClientMatches(db, 'departed@northbankstudios.test');
+    assert.ok(
+      !matches.some((m) => m.confidence === 'exact'),
+      'a deactivated contact must not still count as an exact match',
+    );
+    assert.equal(matches[0]?.confidence, 'domain');
+    // Which means a human decides, instead of the address auto-linking to years
+    // of fees and invoices.
+    assert.equal(decideLink(matches).kind, 'pending_review');
   });
 });
 
@@ -252,9 +290,40 @@ describe('registration', () => {
     const { match, session } = await register('newstarter@northbankstudios.test', 'New Starter');
     assert.equal(match.kind, 'pending_review');
 
+    // The counts are themselves a disclosure — they confirm the company is a
+    // client and say roughly how much it spends — so they stay at zero until a
+    // human approves the link, even though the fixture has real history.
+    assert.equal(match.history.bookings, 0);
+    assert.equal(match.history.communications, 0);
+    assert.equal(match.history.invoices, 0);
+    assert.equal(match.history.firstBookedOn, null);
+    assert.equal(match.history.lastActivityOn, null);
+
     const blocked = await session.get('/api/portal/bookings');
     assert.equal(blocked.status, 403);
     assert.equal(blocked.body.code, 'link_pending');
+
+    // The account page is the one place a pending user is still answered, and it
+    // must answer without handing over the company record it is waiting on.
+    const account = await session.get('/api/portal/account');
+    assert.equal(account.status, 200);
+    assert.equal(account.body.client, null, 'a pending account must not receive the company record');
+    assert.deepEqual(account.body.teammates, []);
+    assert.equal(account.body.linkRequest.status, 'pending');
+
+    // The company *name* is deliberately not on this list: a pending match is
+    // told which company it matched, both here and at registration step 2, so
+    // the person can say "that is not us". What must not travel is the company
+    // record — where it is billed, who runs it, who books it.
+    const serialised = JSON.stringify(account.body);
+    for (const secret of ['billingAddress', 'accountManager', 'primaryContact', 'clientType', 'createdAt']) {
+      assert.ok(!serialised.includes(secret), `pending account payload leaked ${secret}`);
+    }
+
+    // Same rule on the session route that feeds the page chrome.
+    const me = await session.get('/api/auth/me');
+    assert.equal(me.status, 200);
+    assert.equal(me.body.client, null, 'a pending account must not learn the company name from /me');
 
     const admin = new Session();
     await admin.post('/api/auth/login', { email: 'ops@genesismodelmgmt.test', password: 'a-long-enough-password' });
@@ -270,6 +339,13 @@ describe('registration', () => {
     const allowed = await session.get('/api/portal/bookings');
     assert.equal(allowed.status, 200);
     assert.equal(allowed.body.bookings.length, 1);
+
+    // And once a human has approved it, the same account gets the record.
+    const approvedAccount = await session.get('/api/portal/account');
+    assert.equal(approvedAccount.status, 200);
+    assert.equal(approvedAccount.body.client.companyName, 'Northbank Studios');
+    // Still not the primary contact address — nothing renders it.
+    assert.equal('primaryContactEmail' in approvedAccount.body.client, false);
   });
 
   it('opens a fresh client record for a brand new customer', async () => {
@@ -290,6 +366,100 @@ describe('registration', () => {
   });
 });
 
+describe('password reset', () => {
+  /** The code never appears in a response, so read it out of the mailer. */
+  function lastResetCodeFor(email: string): string {
+    const message = [...outbox].reverse().find((m) => m.to === email && m.subject.includes('Reset'));
+    assert.ok(message, `expected a reset email to ${email}`);
+    const code = message.body.match(/\b\d{6}\b/)?.[0];
+    assert.ok(code, 'expected a six-digit code in the reset email');
+    return code;
+  }
+
+  it('answers identically whether or not the address has an account', async () => {
+    const anon = new Session();
+    const known = await anon.post('/api/auth/password/reset-request', { email: 'freya@northbankstudios.test' });
+    const unknown = await anon.post('/api/auth/password/reset-request', { email: 'nobody-at-all@elsewhere.test' });
+
+    assert.equal(known.status, unknown.status);
+    // Byte-identical, not merely similar: any difference at all — an extra key,
+    // a different message, a dev-only code — answers the question this endpoint
+    // exists to refuse to answer.
+    assert.equal(JSON.stringify(known.body), JSON.stringify(unknown.body));
+    assert.equal(JSON.stringify(known.body).includes('devCode'), false);
+
+    // And no code is minted for an address with no account, so the reveal cannot
+    // arrive by a later route either.
+    const unknownRow = db
+      .prepare(`SELECT COUNT(*) AS n FROM verification_codes WHERE email = ? AND purpose = 'reset'`)
+      .get('nobody-at-all@elsewhere.test') as { n: number };
+    assert.equal(unknownRow.n, 0);
+  });
+
+  it('sets a new password, signs the client in, and cannot be replayed', async () => {
+    const email = 'freya@northbankstudios.test';
+    const session = new Session();
+    assert.equal((await session.post('/api/auth/password/reset-request', { email })).status, 200);
+
+    const code = lastResetCodeFor(email);
+    const reset = await session.post('/api/auth/password/reset', {
+      email,
+      code,
+      password: 'a-brand-new-long-password',
+    });
+    assert.equal(reset.status, 200);
+    assert.equal(reset.body.user.email, email);
+
+    // The reset session is a real one.
+    assert.equal((await session.get('/api/portal/overview')).status, 200);
+
+    // Single use: the same code a second time is refused.
+    const replay = await session.post('/api/auth/password/reset', {
+      email,
+      code,
+      password: 'yet-another-long-password',
+    });
+    assert.equal(replay.status, 400);
+
+    const fresh = new Session();
+    assert.equal((await fresh.post('/api/auth/login', { email, password: 'a-brand-new-long-password' })).status, 200);
+
+    const stale = new Session();
+    assert.equal((await stale.post('/api/auth/login', { email, password: 'a-long-enough-password' })).status, 401);
+
+    // Put the fixture password back for the tests that follow.
+    const restore = await fresh.post('/api/auth/password/reset-request', { email });
+    assert.equal(restore.status, 200);
+    const restoreCode = lastResetCodeFor(email);
+    assert.equal(
+      (await fresh.post('/api/auth/password/reset', { email, code: restoreCode, password: 'a-long-enough-password' }))
+        .status,
+      200,
+    );
+  });
+
+  it('rejects a wrong reset code', async () => {
+    const anon = new Session();
+    await anon.post('/api/auth/password/reset-request', { email: 'freya@northbankstudios.test' });
+    const wrong = await anon.post('/api/auth/password/reset', {
+      email: 'freya@northbankstudios.test',
+      code: '000000',
+      password: 'a-long-enough-password',
+    });
+    assert.equal(wrong.status, 400);
+  });
+
+  it('refuses a password below the minimum length', async () => {
+    const anon = new Session();
+    const short = await anon.post('/api/auth/password/reset', {
+      email: 'freya@northbankstudios.test',
+      code: '123456',
+      password: 'short',
+    });
+    assert.equal(short.status, 400);
+  });
+});
+
 describe('tenant isolation', () => {
   it('does not return another client\'s booking by id', async () => {
     const session = new Session();
@@ -304,6 +474,39 @@ describe('tenant isolation', () => {
 
     const other = await session.get('/api/portal/bookings/booking-au-1');
     assert.equal(other.status, 404);
+  });
+
+  it('keeps the agency\'s margin out of every booking shape', async () => {
+    const session = new Session();
+    await session.post('/api/auth/login', {
+      email: 'freya@northbankstudios.test',
+      password: 'a-long-enough-password',
+    });
+
+    // The client is told what they were charged. The split that produced it —
+    // model fee before commission, the commission itself, and the per-model day
+    // rates that make it up — is the agency's, and any one of them next to the
+    // total gives up the other by subtraction.
+    const withheld = ['agencyFeePence', 'feePence', 'dayRatePence'];
+
+    const list = await session.get('/api/portal/bookings');
+    const detail = await session.get('/api/portal/bookings/booking-nb-1');
+    const overview = await session.get('/api/portal/overview');
+
+    for (const [name, response] of [
+      ['bookings list', list],
+      ['booking detail', detail],
+      ['overview', overview],
+    ] as const) {
+      const serialised = JSON.stringify(response.body);
+      for (const field of withheld) {
+        assert.ok(!serialised.includes(field), `${name} exposed ${field}`);
+      }
+    }
+
+    // What the client legitimately needs is still there.
+    assert.equal(detail.body.booking.totalPence, 120000);
+    assert.equal(detail.body.invoices[0].totalPence, 120000);
   });
 
   it('hides internal notes from the client timeline', async () => {
@@ -348,6 +551,87 @@ describe('tenant isolation', () => {
       password: 'a-long-enough-password',
     });
     assert.equal((await session.get('/api/admin/link-requests')).status, 403);
+  });
+});
+
+describe('development code reveal', () => {
+  /**
+   * env reads process.env once, at import time, so the only honest way to ask
+   * what a differently-configured deployment would put in the response body is
+   * to boot the app in one and look.
+   */
+  const serverRoot = fileURLToPath(new URL('..', import.meta.url));
+  const appModule = pathToFileURL(join(serverRoot, 'src', 'app.ts')).href;
+  const run = promisify(execFile);
+
+  async function registerStartUnder(overrides: Record<string, string | undefined>) {
+    const probe = join(workDir, `probe-${Math.random().toString(36).slice(2)}.mjs`);
+    writeFileSync(
+      probe,
+      [
+        `const { createApp } = await import(${JSON.stringify(appModule)});`,
+        'const server = createApp().listen(0);',
+        'await new Promise((resolve) => server.once("listening", resolve));',
+        'const response = await fetch(`http://127.0.0.1:${server.address().port}/api/auth/register/start`, {',
+        '  method: "POST",',
+        '  headers: { "content-type": "application/json" },',
+        '  body: JSON.stringify({ email: "probe@elsewhere.test", fullName: "Probe Account" }),',
+        '});',
+        'const body = await response.text();',
+        'server.close();',
+        'console.log("PROBE:" + JSON.stringify({ status: response.status, body }));',
+      ].join('\n'),
+    );
+
+    const childEnv: Record<string, string> = {
+      ...(process.env as Record<string, string>),
+      SESSION_SECRET: 'probe-secret-that-is-definitely-long-enough',
+      DATABASE_FILE: join(workDir, `probe-${Math.random().toString(36).slice(2)}.db`),
+      APP_URL: 'http://localhost:5173',
+    };
+    // This file is itself running as a node:test child. Left in place, these make
+    // the probe think it is one too, and it writes the reporter's binary protocol
+    // over the result we are trying to read.
+    for (const key of ['NODE_TEST_CONTEXT', 'NODE_OPTIONS', 'NODE_V8_COVERAGE']) delete childEnv[key];
+    for (const [key, value] of Object.entries(overrides)) {
+      if (value === undefined) delete childEnv[key];
+      else childEnv[key] = value;
+    }
+
+    const { stdout } = await run(process.execPath, ['--import', 'tsx', probe], {
+      cwd: serverRoot,
+      env: childEnv,
+    });
+
+    const line = stdout.split('\n').find((l) => l.startsWith('PROBE:'));
+    assert.ok(line, `probe produced no result. stdout was:\n${stdout}`);
+    return JSON.parse(line.slice('PROBE:'.length)) as { status: number; body: string };
+  }
+
+  it('never returns devCode when NODE_ENV is production', async () => {
+    // REVEAL_CODES is deliberately set to true here: production must win anyway.
+    const result = await registerStartUnder({ NODE_ENV: 'production', REVEAL_CODES: 'true' });
+
+    assert.equal(result.status, 200);
+    assert.equal(result.body.includes('devCode'), false, 'production must never return a verification code');
+    assert.equal('devCode' in JSON.parse(result.body), false);
+    // The endpoint still works — it is the code that is withheld, not the reply.
+    assert.equal(JSON.parse(result.body).ok, true);
+  });
+
+  it('stays off outside production unless REVEAL_CODES is explicitly true', async () => {
+    // The staging case: nobody set NODE_ENV, nobody set REVEAL_CODES. It used to
+    // default on, which made every such box hand out codes for any address.
+    const unset = await registerStartUnder({ NODE_ENV: undefined, REVEAL_CODES: undefined });
+    assert.equal('devCode' in JSON.parse(unset.body), false);
+
+    // A value that is not exactly "true" is not true.
+    const fuzzy = await registerStartUnder({ NODE_ENV: 'staging', REVEAL_CODES: '1' });
+    assert.equal('devCode' in JSON.parse(fuzzy.body), false);
+
+    // And the development convenience still works when it is asked for.
+    const on = await registerStartUnder({ NODE_ENV: 'development', REVEAL_CODES: 'true' });
+    assert.equal(typeof JSON.parse(on.body).devCode, 'string');
   });
 });
 

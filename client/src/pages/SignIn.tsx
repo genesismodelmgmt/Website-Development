@@ -69,6 +69,12 @@ export function SignIn() {
         <button type="submit" className="btn-primary w-full" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+
+        <p className="text-center text-sm text-ink-soft">
+          <Link to="/reset-password" className="text-brass underline underline-offset-2 hover:text-ink">
+            Forgot your password?
+          </Link>
+        </p>
       </form>
 
       <div className="mt-8 border-t border-rule pt-6 text-sm text-ink-soft">

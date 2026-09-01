@@ -69,7 +69,6 @@ export interface BookingModel {
   board: string | null;
   role: string | null;
   status: string;
-  dayRatePence?: number;
 }
 
 export interface Booking {
@@ -82,8 +81,7 @@ export interface Booking {
   endDate: string | null;
   location: string | null;
   usageTerms: string | null;
-  feePence: number;
-  agencyFeePence: number;
+  /** What the client was charged. The fee/commission split stays agency-side. */
   totalPence: number;
   currency: string;
   booker: string | null;

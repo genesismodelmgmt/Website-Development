@@ -35,11 +35,17 @@ export const env = {
   sessionTtlHours: Number(process.env.SESSION_TTL_HOURS ?? 12),
   appUrl: required('APP_URL', 'http://localhost:5173'),
   /**
-   * With no SMTP transport wired up, verification codes are written to the
-   * server log. Outside production the code is also returned by the API so the
-   * portal can be demonstrated end to end without a mailbox. Never in production.
+   * With no SMTP transport wired up, verification codes are always written to
+   * the server log. Returning one in the API response as well is a development
+   * convenience and nothing else: any environment where it is on hands the code
+   * for any address to anyone who asks.
+   *
+   * So it takes two independent things to switch on — an explicit
+   * REVEAL_CODES=true *and* a non-production NODE_ENV. Defaulting it on outside
+   * production meant a staging box where nobody set NODE_ENV was wide open, and
+   * "nobody set NODE_ENV" is the normal state of a staging box.
    */
-  revealCodes: !isProduction && process.env.REVEAL_CODES !== 'false',
+  revealCodes: !isProduction && process.env.REVEAL_CODES === 'true',
   codeTtlMinutes: Number(process.env.CODE_TTL_MINUTES ?? 15),
   maxCodeAttempts: Number(process.env.MAX_CODE_ATTEMPTS ?? 5),
   /** Per-IP caps over a 15 minute window. Raised by the test suite, which is all one IP. */

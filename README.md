@@ -26,8 +26,24 @@ Matches are graded by how much they actually prove:
 | `domain` | Only the company domain matches — a new colleague at a client we know | Account created, but the history stays shut until Genesis approves the request |
 | none | Nothing on file | A fresh client record is opened, status `prospect` |
 
+`exact` means the contact is still marked active. An address that was
+deactivated when its owner left the client no longer auto-links; it falls back to
+whatever weaker signal remains, which means a human decides.
+
 Consumer mailbox domains (gmail, outlook, icloud and friends) never count as a
 domain match — otherwise half of London would match on `gmail.com`.
+
+Until the agency approves a `domain` match, the portal shows the matched company
+name and nothing else about it: the history counts, the company record and the
+billing details all stay shut. The counts alone would say how much business the
+company does.
+
+**Forgotten your password** works the same way round: `POST
+/api/auth/password/reset-request` answers identically whether or not the address
+has an account, and the code arrives by email rather than in the response.
+`POST /api/auth/password/reset` takes the code and a new password, and signs you
+in. The links are on the sign-in page and on the registration code step, which is
+where someone who already has an account tends to get stuck.
 
 Ambiguity always resolves towards asking a human. Two companies claiming the
 same address, or a domain-only hit, goes to the agency queue rather than
@@ -44,8 +60,11 @@ npm run dev       # API on :4000, portal on :5173
 Open http://localhost:5173.
 
 No mail transport is configured, so verification codes are printed to the server
-terminal and returned by the API outside production. `REVEAL_CODES=false` turns
-the API half of that off; in production it is off regardless.
+terminal. The API will also return one in the response body, but only where
+`REVEAL_CODES=true` is set explicitly *and* `NODE_ENV` is not `production` — it
+takes both, so an environment nobody configured is closed rather than open.
+`.env.example` sets it for local development. The password reset endpoints never
+return a code in any environment; read it from the terminal.
 
 ### Demo logins
 
@@ -74,9 +93,9 @@ server/            Express + SQLite API
   src/matching.ts  How a returning client is recognised
   src/auth.ts      Passwords, sessions, verification codes, the tenant gate
   src/routes/      auth (register + sign in), portal (client data), admin (queue)
-  test/            16 tests, including the isolation cases
+  test/            25 tests, including the isolation and disclosure cases
 client/            React + Vite + Tailwind portal
-  src/pages/       Sign in, register, dashboard, bookings, correspondence, invoices, account
+  src/pages/       Sign in, register, reset password, dashboard, bookings, correspondence, invoices, account
 ```
 
 ## How the data is kept apart
@@ -104,9 +123,6 @@ rather than signing cookies with a key that changes on every restart.
 
 Worth knowing before this goes near live data:
 
-- **Password reset.** The `verification_codes` table has a `reset` purpose and
-  the mailer is ready, but no route uses it. Clients who forget a password
-  currently need the agency to intervene.
 - **A real mail transport.** `deliver()` logs instead of sending. Until it is
   wired to a provider, nobody receives their verification code by email.
 - **The CRM link.** Bookings, communications and invoices are read from this
