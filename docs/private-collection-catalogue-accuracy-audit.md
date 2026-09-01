@@ -75,8 +75,8 @@ runtime" — the headline simply did not do so.
 
 ## What was changed
 
-Sent to the Lovable agent as a single scoped instruction. No restyling, no
-pricing changes, no inventory added or removed.
+Applied on the Lovable project as commit `2ec72dde`. No restyling, no pricing
+changes, no inventory added or removed.
 
 - The Skeleton → `designFeatures` migration is now actually applied at record
   construction, mapping to "Openworked" where the piece's own name or spec uses
@@ -86,8 +86,27 @@ pricing changes, no inventory added or removed.
   opening-clause duplication are all fixed.
 - On the piece page the "Complications" row becomes "Functions", with a
   separate "Design" row for skeleton/openworked, and never renders empty.
-- The homepage count derives from `PUBLIC_WATCHES.length`.
+- The homepage count derives from `PUBLIC_WATCHES.length` and is spelled as a
+  word, so it now reads "Sixty-seven pieces, quietly held."
 - The five factual corrections above, plus the six missing annual calendars.
+
+Verified from source after the run: typecheck clean, `check-no-prices.mjs`
+reports `OK` against a fresh production build. Lint does not fully pass, but it
+did not before — the repo carries 565 pre-existing prettier formatting errors
+across roughly 30 files, and the three touched files measured 206 errors both
+before and after, so this pass added none.
+
+Two loose ends worth a later tidy, neither of them an error:
+
+- `numberToWords` and `COLLECTION_COUNT_WORD` were inserted between the import
+  statements in `src/routes/index.tsx`. Valid ESM and it typechecks, but it
+  would trip an `import/first` rule if one were ever added.
+- The de-duplication only strips spec segments that exactly match a named
+  material, so piece-49 still reads "in yellow gold and steel. Steel and yellow
+  gold, Blue dial and bezel", and piece-08 repeats its TPT materials similarly.
+  Repetitive rather than wrong.
+- The collection intro line still says "Filter by house, family, material and
+  complication" while the facet itself is now labelled "Function".
 
 ## What was deliberately not changed
 
@@ -138,7 +157,16 @@ personally, briefly, without over-explaining:
 
 ## Open
 
-- Publish is a separate step. The changes sit in the Lovable preview until
-  the site is deployed; review before publishing.
+- **Publish is a separate step.** The changes sit in the Lovable preview at
+  commit `2ec72dde`. The live site at `the-private-collection.lovable.app` still
+  serves the old copy until it is deployed. Review, then publish.
+- The commit also carries changes nobody asked for: Lovable bumped
+  `@lovable.dev/vite-tanstack-config` from 2.12.0 to 2.13.1 and regenerated its
+  Supabase preview-auth plumbing (`previewAuthStorage.ts`, plus a one-line
+  change in `client.ts`). Both files are marked automatically generated. They
+  are platform housekeeping, not part of this pass, but they will ship with it.
 - The four flagged records are a work queue for the owner, not a permanent
   hide. §6b of the risk register applies.
+- `docs/COMMERCIAL_READINESS.md` still lists the WhatsApp number
+  `+44 7568 765929` in §4 and §7b, although WhatsApp was removed from the site
+  on 13 August. Stale internal doc only, left alone deliberately.
