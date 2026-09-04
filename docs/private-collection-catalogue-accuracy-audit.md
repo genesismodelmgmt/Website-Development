@@ -96,17 +96,94 @@ did not before — the repo carries 565 pre-existing prettier formatting errors
 across roughly 30 files, and the three touched files measured 206 errors both
 before and after, so this pass added none.
 
-Two loose ends worth a later tidy, neither of them an error:
+Three loose ends were left open by this first pass, none of them an error: the
+`numberToWords` helper sitting between the imports, the de-duplication only
+catching exact material matches, and the intro line still saying "complication"
+where the facet now says "Function". All three are closed in the second pass
+below.
 
-- `numberToWords` and `COLLECTION_COUNT_WORD` were inserted between the import
-  statements in `src/routes/index.tsx`. Valid ESM and it typechecks, but it
-  would trip an `import/first` rule if one were ever added.
-- The de-duplication only strips spec segments that exactly match a named
-  material, so piece-49 still reads "in yellow gold and steel. Steel and yellow
-  gold, Blue dial and bezel", and piece-08 repeats its TPT materials similarly.
-  Repetitive rather than wrong.
-- The collection intro line still says "Filter by house, family, material and
-  complication" while the facet itself is now labelled "Function".
+---
+
+# Second pass — full catalogue survey
+
+_2 September 2026. Applied on the Lovable project as commit `f49d2ee8`._
+
+The first pass fixed the systematic generator faults and the errors that
+surfaced while diagnosing them. This pass went further: every one of the 67
+public records was checked record by record against the manufacturer's
+published specification for the reference it names.
+
+## Four further factual errors
+
+| Piece | Published | Actually |
+| --- | --- | --- |
+| piece-41 | Daytona "Leopard" in **rose gold** with a **baguette-diamond** bezel | Reference 116598SACO is **yellow gold** with a bezel of 36 **cognac baguette sapphires** and diamond-set lugs. Wrong on both metal and stones |
+| piece-15 | RM 21-01 as a "Carbon TPT case with rose-gold bezel" | Inverted. It is a **5N red gold case** reinforced by a **Carbon TPT exoskeleton** forming bezel and pillars |
+| piece-33 | Daytona champagne with "**Paul Newman-style subdials**" | "Paul Newman" denotes the vintage 6239/6241 exotic dials and carries a large value implication. The modern yellow gold champagne reference simply has contrasting black subdials |
+| piece-42 | Land-Dweller 36 on an "Integrated Jubilee" | Rolex's own name for it is the **Flat Jubilee** |
+
+piece-33 is the one I would flag hardest commercially. Describing a modern
+Daytona with a term that collectors associate with six- and seven-figure
+vintage references is the kind of thing that reads as either ignorance or
+sharp practice, and neither is what this site is trying to project.
+
+## The dormant provenance field
+
+`Watch` has declared an `attributeProvenance` object with a `gemSetting` slot —
+`factory` / `aftermarket` / `unknown` / `verification_pending` — since before
+this work began, and it was populated on **zero** records. That is a real gap
+on a catalogue this heavily gem-set, and §6b already names aftermarket
+disclosure as an open issue on piece-25.
+
+It is now populated on the three records whose configuration is not a
+manufacturer catalogue reference:
+
+- **piece-70** — Patek's ruby-set Nautilus Joaillerie is reference
+  5711/112P-001, in **platinum**. A rose gold 5711 with a salmon dial, ruby-set
+  case and gradient sapphire bezel is not a Patek configuration.
+- **piece-72** — a blue sapphire baguette bezel on a white gold 5711 is not a
+  Patek configuration.
+- **piece-75** — an emerald baguette bezel on a white gold 5711 is not a Patek
+  configuration.
+
+All three stay publicly visible. The flag is internal. Factory versus
+aftermarket materially changes what these are worth, and it is the owner's call
+to make from the pieces and their papers, not mine from a photograph.
+
+## Two more flagged, two duplicates queried
+
+- **piece-20** — the RM 21-02 Aerodyne case is grade 5 titanium, Carbon TPT
+  *and* Quartz TPT; the record lists Carbon TPT alone, and the stated green
+  with orange colourway could not be matched to a documented execution.
+- **piece-56** — AP catalogues the yellow gold Royal Oak Chronograph 41
+  (26240BA) with a yellow-gold-toned Grande Tapisserie dial. No blue variant.
+- **piece-69 and piece-74** both describe Nautilus 5990/1400G in near-identical
+  terms. Either two examples are genuinely held or one record was duplicated —
+  the module's own comment claims two pieces never share copy, and these do.
+
+## Records confirmed correct
+
+Worth recording, because it is most of the catalogue. Checked and found
+accurate: the platinum ice-blue Daytona and its chestnut bezel, both Pepsi
+GMTs, the Sprite, the platinum and Everose Day-Dates, the white gold Rainbow
+Daytona with its meteorite-look subdials, the Tahitian mother-of-pearl Daytona,
+the rose gold SARU (126755SARU does exist, contrary to my first suspicion), the
+Land-Dweller's white honeycomb dial, the Oyster Perpetual 41 lavender under its
+current 134300 reference, RM 71-02, the Aquanaut Luce rainbow chronograph
+7968/300R, the white gold Aquanaut Haute Joaillerie, and the AP 34 mm white
+ceramic 77350CB.
+
+## Verification
+
+Typecheck clean. Production build succeeds. `node scripts/check-no-prices.mjs
+dist/client` reports `OK`. Lint reports 202 errors on the touched files, all
+pre-existing prettier debt of the same class as the 206 measured last pass; no
+new rule violations, no unrelated files reformatted.
+
+The commit also carries a change to `src/integrations/supabase/types.ts` that
+nobody asked for — parenthesising conditional type parameters in Lovable's
+auto-generated Supabase types, presumably a TypeScript version fix from the
+platform.
 
 ## What was deliberately not changed
 
@@ -157,9 +234,14 @@ personally, briefly, without over-explaining:
 
 ## Open
 
-- **Publish is a separate step.** The changes sit in the Lovable preview at
-  commit `2ec72dde`. The live site at `the-private-collection.lovable.app` still
+- **Publish is a separate step.** Both passes sit in the Lovable preview, now at
+  commit `f49d2ee8`. The live site at `the-private-collection.lovable.app` still
   serves the old copy until it is deployed. Review, then publish.
+- **The gem-set catalogue is only partly provenanced.** `attributeProvenance` is
+  now populated on three records; every other gem-set piece still carries no
+  factory-versus-aftermarket statement either way. Establishing that across the
+  catalogue is owner work that cannot be done from photographs, and it is the
+  single largest remaining accuracy exposure on the site.
 - The commit also carries changes nobody asked for: Lovable bumped
   `@lovable.dev/vite-tanstack-config` from 2.12.0 to 2.13.1 and regenerated its
   Supabase preview-auth plumbing (`previewAuthStorage.ts`, plus a one-line
