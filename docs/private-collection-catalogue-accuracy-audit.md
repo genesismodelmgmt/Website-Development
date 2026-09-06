@@ -234,9 +234,15 @@ personally, briefly, without over-explaining:
 
 ## Open
 
-- **Publish is a separate step.** Both passes sit in the Lovable preview, now at
-  commit `f49d2ee8`. The live site at `the-private-collection.lovable.app` still
-  serves the old copy until it is deployed. Review, then publish.
+- **Published 6 September 2026.** Both passes are live at
+  `the-private-collection.lovable.app`, deployed from commit `f49d2ee8` to the
+  existing slug so the URL is unchanged (deployment
+  `a3941dc9-d7d6-46ba-a00e-ba8ed0742b3a`). The deploy reported no error and the
+  published commit matches the audited one. Note that the rendered live page
+  could not be fetched back for confirmation from the session that published it,
+  because the egress proxy blocks `lovable.app`; the deploy is confirmed from
+  the platform's own status rather than by reading the page. Worth one
+  human glance at a corrected piece, `/piece/piece-41` being the clearest.
 - **The gem-set catalogue is only partly provenanced.** `attributeProvenance` is
   now populated on three records; every other gem-set piece still carries no
   factory-versus-aftermarket statement either way. Establishing that across the
