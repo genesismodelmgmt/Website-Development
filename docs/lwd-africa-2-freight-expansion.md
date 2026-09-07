@@ -15,11 +15,11 @@ Owner decisions on the day, recorded because they shape everything below:
 
 ## What was built
 
-Ten services, defined once in `src/lib/services.ts` and rendered everywhere from
-that one source: vehicle shipping A to B, container freight (FCL and LCL), RO-RO,
-breakbulk and project cargo, plant and machinery, personal effects and removals,
-customs clearance and documentation, inland haulage and delivery, cargo
-insurance, and warehousing and consolidation.
+Eleven services, defined once in `src/lib/services.ts` and rendered everywhere
+from that one source: vehicle shipping A to B, container freight (FCL and LCL),
+RO-RO, breakbulk and project cargo, air freight, plant and machinery, personal
+effects and removals, customs clearance and documentation, inland haulage and
+delivery, cargo insurance, and warehousing and consolidation.
 
 On top of that: a `/shipping` hub, a page per service, and a freight quote flow.
 The site has no backend and no web forms by design, so the quote flow collects
@@ -42,10 +42,17 @@ Deliberately absent: any response-time promise (the car side says "within 24
 hours"; that was not carried over to freight), any sailing frequency, any
 minimum charge, any named port or warehouse, and any insurer.
 
-**Air freight was not built.** The owner chose "full freight, any route", and the
-option described containers, machinery, general freight, personal effects and
-vehicles. Air was not in it, and a service the owner has not confirmed does not
-belong on a commercial site. It is a small addition if wanted.
+**Air freight was held back, then added.** It was not in the scope the owner
+originally chose, so it was not built: a service the owner has not confirmed does
+not belong on a commercial site. The owner confirmed it on the same day and it
+went in as the eleventh service, to the same discipline as the rest. It carries
+no transit times, no named airlines or airports, and no claim to handle dangerous
+goods; whether any of the cargo is restricted is asked as a question rather than
+answered as a capability, because that is a certification question that has not
+been confirmed.
+
+The catalogue heading now counts itself, spelled out in words to match the site's
+other headings, so a twelfth service cannot leave the page saying eleven.
 
 ## Three findings that changed the work
 
@@ -84,15 +91,16 @@ than dilute: the home page title and the hero headline were not touched, the
 `AutomotiveBusiness` schema kept its type, and freight was added as a second
 entity. A site wide `@id` was added to the Organization node so the two business
 lines resolve to one company instead of two fragments. The sitemap now generates
-the freight pages from the catalogue: 109 URLs before, 120 after, all returning
+the freight pages from the catalogue: 109 URLs before, 121 after, all returning
 200.
 
 ## Verification
 
 - Original acceptance harness: **26 of 26**.
-- New freight harness (`verify-shipping.mjs`): **50 of 51**. Coverage includes
-  every service page at ten widths from 320 to 1920, sitemap validity with every
-  entry resolving, the quote dialog reachable and dismissible at 320x844 and
+- New freight harness (`verify-shipping.mjs`): **50 of 51**, re-run after air
+  freight was added: 11 of 11 service pages render, 121 of 121 sitemap URLs
+  resolve. Coverage includes every service page at ten widths from 320 to 1920,
+  sitemap validity with every entry resolving, the quote dialog reachable and dismissible at 320x844 and
   390x600, unique titles and self referencing canonicals on all eleven pages, and
   the previous fixes re-tested on the new routes.
 - Typecheck clean.
@@ -108,17 +116,29 @@ While the work was in progress the three button utilities were found to render a
 
 ## Applied to Lovable
 
-Commit `97346f02`, "Applied unified diff changes", on top of `3fe6f9af`. The
-photography was commissioned as a separate follow up, because the environment
-this was built in cannot reach any image host and a guessed URL would ship as a
-broken image. Until it lands, each service page renders a brand plate designed to
-look deliberate rather than an empty box.
+Three commits on top of `3fe6f9af`:
+
+- `97346f02` the freight build.
+- `ccf28d81` the photography.
+- `06e1f3d9` air freight as the eleventh service.
+
+The photography was commissioned separately, because the environment this was
+built in cannot reach any image host and a guessed URL would ship as a broken
+image on a live commercial site. Every service now carries a real Wikimedia
+Commons photograph under a Creative Commons licence, with alt text describing the
+photograph rather than the service, a credit line generated onto `/image-credits`
+from the same data, and a cropped share image per page. Nothing pictured is
+presented as LWD Africa's own vessels, terminals or equipment.
 
 **Nothing published.** lwdcarsafrica.com still serves the July build.
 
+Note for whoever picks this up next: the local mirror used to build and test this
+work is now behind the Lovable project, which carries the photography fields, the
+generated share images and the credits page changes. Re-mirror before generating
+another diff against it.
+
 ## Open items for the owner
 
-- Confirm or reject air freight as a service.
 - Decide whether the header phone number should stay hidden between 1024 and
   1279, or whether a nav item should be dropped instead.
 - Review the photography once it lands, and the credits on `/image-credits`.
