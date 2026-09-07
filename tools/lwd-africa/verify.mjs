@@ -186,7 +186,11 @@ for (const [width, height] of [
       // plain scrollTo animates and every sample would read a page that has
       // barely moved.
       window.scrollTo({ top: y, behavior: "instant" });
+      // Two frames is enough for layout but not for a running animation to
+      // settle, which reads as an element stuck a hair under 1. Give the
+      // reveal time to finish before sampling.
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await new Promise((r) => setTimeout(r, 260));
       for (const s of sections) {
         const r = s.getBoundingClientRect();
         const inView = r.top < window.innerHeight * 0.85 && r.bottom > window.innerHeight * 0.15;
@@ -244,22 +248,44 @@ for (const [width, height] of [
 }
 
 // 8. No console errors or failed local requests on any route.
+// Each route gets its own page and is allowed to settle. Sweeping several
+// routes through one tab cancels Vite's in-flight module requests, and those
+// surface as ERR_ABORTED on files that are perfectly healthy: real defects were
+// being reported alongside pure navigation noise. Aborts are counted separately
+// and never fail the check on their own.
 {
-  const { page, context } = await newPage(browser, { width: 390 });
   const problems = [];
-  page.on("console", (m) => {
-    if (m.type() === "error") problems.push(m.text().slice(0, 120));
-  });
-  page.on("pageerror", (e) => problems.push("pageerror: " + e.message.slice(0, 120)));
-  page.on("requestfailed", (r) => {
-    if (r.url().includes("127.0.0.1")) problems.push("failed: " + r.url());
-  });
+  let aborted = 0;
   for (const route of ROUTES) {
+    const { page, context } = await newPage(browser, { width: 390 });
+    // External image hosts (Wikimedia car photography, Google Fonts) are blocked
+    // by this sandbox's egress policy, and the browser reports each one as a
+    // generic "Failed to load resource" console error with no URL attached.
+    // Those say nothing about the site: failures that matter are asserted
+    // separately below, against local requests only.
+    const SANDBOX_EGRESS = /Failed to load resource: net::(ERR_TUNNEL_CONNECTION_FAILED|ERR_CONNECTION_RESET|ERR_NAME_NOT_RESOLVED|ERR_BLOCKED_BY_CLIENT)/;
+    page.on("console", (m) => {
+      if (m.type() !== "error") return;
+      const text = m.text();
+      if (SANDBOX_EGRESS.test(text)) return;
+      problems.push(`console (${route}): ` + text.slice(0, 120));
+    });
+    page.on("pageerror", (e) => problems.push(`pageerror (${route}): ` + e.message.slice(0, 120)));
+    page.on("requestfailed", (r) => {
+      if (!r.url().includes("127.0.0.1")) return;
+      if ((r.failure()?.errorText || "").includes("ERR_ABORTED")) aborted++;
+      else problems.push(`failed (${route}): ` + r.url().slice(0, 100));
+    });
     await page.goto(BASE + route, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(700);
+    await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    await context.close();
   }
-  record("no console errors across routes", problems.length === 0, problems.slice(0, 5).join(" | "));
-  await context.close();
+  record(
+    "no console errors across routes",
+    problems.length === 0,
+    problems.slice(0, 5).join(" | ") + (aborted ? ` [${aborted} navigation aborts ignored]` : ""),
+  );
 }
 
 await browser.close();

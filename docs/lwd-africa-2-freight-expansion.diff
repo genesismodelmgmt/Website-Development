@@ -1,0 +1,2130 @@
+diff --git a/src/components/freight-quote-dialog.tsx b/src/components/freight-quote-dialog.tsx
+new file mode 100644
+index 0000000..3484a0b
+--- /dev/null
++++ b/src/components/freight-quote-dialog.tsx
+@@ -0,0 +1,305 @@
++import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
++import * as DialogPrimitive from "@radix-ui/react-dialog";
++import { CARGO_TYPES, DESTINATION_REGIONS, ORIGIN_REGIONS, type Service } from "@/lib/services";
++import { EMAIL, EMAIL_HREF, TEL_HREF, WA_DISPLAY, waAnchorProps, waLink } from "@/lib/contact";
++import { track } from "@/lib/analytics";
++
++/**
++ * The freight quote flow.
++ *
++ * The site has no backend and no web forms by design: every enquiry ends in a
++ * WhatsApp deep link. So this is a short guided builder rather than something
++ * that submits. It collects the four things every service in the catalogue asks
++ * for — what the cargo is, where it is now, where it needs to go and roughly
++ * when it is ready — then composes a plain message and hands it to WhatsApp.
++ *
++ * Mounting it (for whoever links to it from the nav or the home page):
++ *
++ *   const [quote, setQuote] = useState(false);
++ *   <button onClick={() => setQuote(true)}>Get a freight quote</button>
++ *   <FreightQuoteDialog open={quote} onClose={() => setQuote(false)} source="nav" />
++ *
++ * `service` pre-sets the flow to one service; `initialOrigin`, `initialDestination`
++ * and `initialCargo` pre-set a single answer, e.g. from a lane chip.
++ */
++export interface FreightQuoteDialogProps {
++  open: boolean;
++  onClose: () => void;
++  /** Pre-set the enquiry to one service from the catalogue. */
++  service?: Service | null;
++  /** Pre-selected answers. Anything left out starts empty. */
++  initialCargo?: string;
++  initialOrigin?: string;
++  initialDestination?: string;
++  /** Analytics label for where the dialog was opened from. */
++  source?: string;
++}
++
++/** Deliberately vague: a readiness window, never a promise about a sailing. */
++const READY_OPTIONS = [
++  "Ready now",
++  "Within a month",
++  "In one to three months",
++  "Still planning",
++] as const;
++
++/**
++ * The cargo answer a service already implies. Services that apply to any cargo
++ * (clearance, haulage, insurance) are absent on purpose, so the visitor picks.
++ */
++const CARGO_FOR_SERVICE: Record<string, string> = {
++  "vehicle-shipping": "A vehicle",
++  "ro-ro": "A vehicle",
++  "container-freight": "Container freight",
++  "warehousing-and-consolidation": "Container freight",
++  "plant-and-machinery": "Plant or machinery",
++  "breakbulk-and-project-cargo": "Oversized or project cargo",
++  "personal-effects": "Personal effects",
++};
++
++export function FreightQuoteDialog({
++  open,
++  onClose,
++  service = null,
++  initialCargo,
++  initialOrigin,
++  initialDestination,
++  source = "shipping",
++}: FreightQuoteDialogProps) {
++  const [cargo, setCargo] = useState("");
++  const [origin, setOrigin] = useState("");
++  const [destination, setDestination] = useState("");
++  const [details, setDetails] = useState("");
++  const [ready, setReady] = useState("");
++
++  // Opened from page state rather than a Radix Trigger, so focus has nowhere to
++  // return to on close. Remember the last element focused outside any dialog.
++  const openerRef = useRef<HTMLElement | null>(null);
++  useEffect(() => {
++    const onFocusIn = (e: FocusEvent) => {
++      const t = e.target;
++      if (t instanceof HTMLElement && !t.closest("[role=dialog]")) openerRef.current = t;
++    };
++    document.addEventListener("focusin", onFocusIn);
++    return () => document.removeEventListener("focusin", onFocusIn);
++  }, []);
++
++  // The seed is read through a ref so the reset below can depend on `open`
++  // alone. Depending on the props directly would re-run it whenever a parent
++  // re-rendered with a new `service` object and wipe what the visitor typed.
++  const seedRef = useRef({ service, initialCargo, initialOrigin, initialDestination, source });
++  seedRef.current = { service, initialCargo, initialOrigin, initialDestination, source };
++
++  // Every opening starts a fresh enquiry, seeded with whatever the opener knew.
++  useEffect(() => {
++    if (!open) return;
++    const seed = seedRef.current;
++    setCargo(seed.initialCargo ?? (seed.service ? CARGO_FOR_SERVICE[seed.service.slug] ?? "" : ""));
++    setOrigin(seed.initialOrigin ?? "");
++    setDestination(seed.initialDestination ?? "");
++    setDetails("");
++    setReady("");
++    track("freight_quote_open", { service: seed.service?.slug ?? "none", source: seed.source });
++  }, [open]);
++
++  const message = useMemo(() => {
++    const trimmed = details.trim();
++    return [
++      "Hi LWD Africa, I'd like a freight quote.",
++      service ? `Service: ${service.name}` : null,
++      cargo ? `Cargo: ${cargo}` : null,
++      origin ? `From: ${origin}` : null,
++      destination ? `To: ${destination}` : null,
++      trimmed ? `Details: ${trimmed}` : null,
++      ready ? `Ready: ${ready}` : null,
++      "Please let me know what else you need to quote it.",
++    ]
++      .filter(Boolean)
++      .join("\n");
++  }, [service, cargo, origin, destination, details, ready]);
++
++  const titleId = "freight-quote-title";
++  const descId = "freight-quote-description";
++  const hints = service ? service.needed : null;
++
++  return (
++    <DialogPrimitive.Root open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
++      <DialogPrimitive.Portal>
++        <DialogPrimitive.Overlay className="fixed inset-0 z-[80] bg-background/85 backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
++        <DialogPrimitive.Content
++          aria-labelledby={titleId}
++          aria-describedby={descId}
++          onCloseAutoFocus={(e) => {
++            const opener = openerRef.current;
++            if (opener && document.contains(opener)) {
++              e.preventDefault();
++              opener.focus({ preventScroll: true });
++            }
++          }}
++          className="fixed left-1/2 top-1/2 z-[81] w-[calc(100%-1.5rem)] sm:w-[calc(100%-3rem)] max-w-xl max-h-[92dvh] -translate-x-1/2 -translate-y-1/2 overflow-hidden bg-card border border-border rounded-2xl shadow-2xl flex flex-col focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
++        >
++          <div className="shrink-0 border-b border-border p-5 sm:p-6 flex items-start justify-between gap-4">
++            <div className="min-w-0">
++              <div className="eyebrow">{service ? service.kicker : "Freight quote"}</div>
++              <DialogPrimitive.Title id={titleId} className="font-display text-2xl sm:text-3xl font-semibold mt-2 leading-tight">
++                {service ? service.name : "Tell us what and where"}
++              </DialogPrimitive.Title>
++              <DialogPrimitive.Description id={descId} className="text-xs sm:text-sm text-muted-foreground mt-2 leading-relaxed">
++                Five short answers. We turn them into a WhatsApp message you can read before it sends — nothing is submitted anywhere.
++              </DialogPrimitive.Description>
++            </div>
++            <DialogPrimitive.Close
++              aria-label="Close"
++              className="shrink-0 w-11 h-11 sm:w-9 sm:h-9 rounded-full bg-background border border-border grid place-items-center text-lg hover:bg-[color:var(--surface)] transition focus-visible:outline-2 focus-visible:outline-primary"
++            >×</DialogPrimitive.Close>
++          </div>
++
++          <div className="flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6 space-y-7">
++            {hints ? (
++              <div className="rounded-xl border border-border bg-[color:var(--surface)] p-4">
++                <div className="text-[10px] uppercase tracking-[0.22em] text-primary">What we need to quote</div>
++                <ul className="mt-3 space-y-1.5 text-xs text-muted-foreground leading-relaxed">
++                  {hints.map((h) => (
++                    <li key={h} className="flex gap-2">
++                      <span aria-hidden className="text-primary">·</span>
++                      <span>{h}</span>
++                    </li>
++                  ))}
++                </ul>
++              </div>
++            ) : null}
++
++            <Step n={1} label="What are you shipping?">
++              <div className="flex flex-wrap gap-2">
++                {CARGO_TYPES.map((c) => (
++                  <Chip key={c} label={c} selected={cargo === c} onSelect={() => setCargo(cargo === c ? "" : c)} />
++                ))}
++              </div>
++            </Step>
++
++            <Step n={2} label="Where is it now?">
++              <select
++                aria-label="Origin"
++                value={origin}
++                onChange={(e) => setOrigin(e.target.value)}
++                className="w-full bg-input border border-border rounded-md px-3 py-2.5 min-h-11 md:min-h-0 text-sm"
++              >
++                <option value="">Choose an origin</option>
++                {ORIGIN_REGIONS.map((o) => <option key={o} value={o}>{o}</option>)}
++              </select>
++            </Step>
++
++            <Step n={3} label="Where does it need to go?">
++              <select
++                aria-label="Destination"
++                value={destination}
++                onChange={(e) => setDestination(e.target.value)}
++                className="w-full bg-input border border-border rounded-md px-3 py-2.5 min-h-11 md:min-h-0 text-sm"
++              >
++                <option value="">Choose a destination</option>
++                {DESTINATION_REGIONS.map((d) => <option key={d} value={d}>{d}</option>)}
++              </select>
++            </Step>
++
++            <Step n={4} label="Describe the cargo">
++              <textarea
++                aria-label="Describe the cargo"
++                value={details}
++                onChange={(e) => setDetails(e.target.value)}
++                rows={3}
++                placeholder={
++                  hints
++                    ? `For example: ${hints[0].toLowerCase()}, and the collection and delivery addresses.`
++                    : "What it is, roughly what it weighs or measures, and the collection and delivery addresses."
++                }
++                className="w-full bg-input border border-border rounded-md px-3 py-2.5 text-sm leading-relaxed resize-y"
++              />
++            </Step>
++
++            <Step n={5} label="Roughly when is it ready?">
++              <div className="flex flex-wrap gap-2">
++                {READY_OPTIONS.map((r) => (
++                  <Chip key={r} label={r} selected={ready === r} onSelect={() => setReady(ready === r ? "" : r)} />
++                ))}
++              </div>
++            </Step>
++
++            <div>
++              <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Your message</div>
++              <p className="mt-3 rounded-xl border border-border bg-[color:var(--surface)] p-4 text-xs leading-relaxed text-muted-foreground whitespace-pre-line">
++                {message}
++              </p>
++            </div>
++          </div>
++
++          <div className="shrink-0 border-t border-border p-4 sm:p-5 space-y-3 bg-card">
++            <div className="grid gap-2 sm:grid-cols-[1.4fr_1fr]">
++              <a
++                href={waLink(message)}
++                {...waAnchorProps}
++                onClick={() => {
++                  track("freight_quote_send", {
++                    service: service?.slug ?? "none",
++                    cargo: cargo || "unspecified",
++                    origin: origin || "unspecified",
++                    destination: destination || "unspecified",
++                    source,
++                  });
++                  track("whatsapp_click", { location: "freight_dialog" });
++                }}
++                className="btn-gold w-full text-center !py-3.5"
++              >
++                <span className="inline-block w-2 h-2 rounded-full whatsapp-dot" aria-hidden />
++                Send on WhatsApp
++              </a>
++              <a
++                href={TEL_HREF}
++                onClick={() => track("call_click", { location: "freight_dialog" })}
++                className="btn-outline w-full text-center !py-3.5"
++              >
++                Call {WA_DISPLAY}
++              </a>
++            </div>
++            <div className="text-[11px] text-muted-foreground text-center">
++              Prefer email?{" "}
++              <a
++                href={EMAIL_HREF}
++                onClick={() => track("email_click", { location: "freight_dialog" })}
++                className="underline hover:text-foreground transition-colors"
++              >{EMAIL}</a>
++            </div>
++          </div>
++        </DialogPrimitive.Content>
++      </DialogPrimitive.Portal>
++    </DialogPrimitive.Root>
++  );
++}
++
++function Step({ n, label, children }: { n: number; label: string; children: ReactNode }) {
++  return (
++    <div>
++      <div className="flex items-baseline gap-3">
++        <span className="text-[10px] uppercase tracking-[0.24em] text-primary">0{n}</span>
++        <span className="text-sm font-semibold">{label}</span>
++      </div>
++      <div className="mt-3">{children}</div>
++    </div>
++  );
++}
++
++function Chip({ label, selected, onSelect }: { label: string; selected: boolean; onSelect: () => void }) {
++  return (
++    <button
++      type="button"
++      aria-pressed={selected}
++      onClick={onSelect}
++      className={`inline-flex items-center justify-center min-h-11 px-3.5 py-2 rounded-sm border text-[11px] uppercase tracking-[0.14em] transition-colors focus-visible:outline-2 focus-visible:outline-primary ${
++        selected
++          ? "border-primary text-primary bg-primary/10 font-semibold"
++          : "border-border text-muted-foreground hover:text-foreground hover:border-primary/60"
++      }`}
++    >
++      {label}
++    </button>
++  );
++}
+diff --git a/src/components/service-photo.tsx b/src/components/service-photo.tsx
+new file mode 100644
+index 0000000..57a4c4c
+--- /dev/null
++++ b/src/components/service-photo.tsx
+@@ -0,0 +1,100 @@
++import { BrandWordmark } from "@/components/brand-mark";
++import type { Service } from "@/lib/services";
++
++/**
++ * The photo slot for a freight service page.
++ *
++ * The catalogue in `src/lib/services.ts` currently describes the photograph each
++ * service wants (`Service.photo`) but carries no picture. Rather than ship a
++ * stock-photo grey box or an "image coming soon" apology, the slot renders a
++ * deliberate panel in the site's own language until a real photograph exists.
++ *
++ * Dropping a photograph in later is a one-line change per service: add
++ * `image: "https://…"` (or a path under `public/`) to that service's entry and
++ * this component switches to a proper responsive <img>. Two further optional
++ * fields are read if present:
++ *
++ *   image?: string        the photograph itself
++ *   imageAlt?: string     alt text describing the actual photograph
++ *   imageCredit?: string  a credit line, rendered under the picture
++ *
++ * They are read through the local type below so that `Service` does not have to
++ * carry them before the photography exists. When they are added to the `Service`
++ * interface this alias becomes redundant and can be deleted; nothing else here
++ * changes.
++ */
++type PhotographedService = Service & {
++  image?: string;
++  imageAlt?: string;
++  imageCredit?: string;
++};
++
++interface Props {
++  service: Service;
++  /** Extra classes for the outer panel, e.g. layout or ordering. */
++  className?: string;
++  /** Passed straight to the <img>. Defaults to the service page's column width. */
++  sizes?: string;
++}
++
++export function ServicePhoto({
++  service,
++  className = "",
++  sizes = "(min-width: 1024px) 640px, 92vw",
++}: Props) {
++  const { image, imageAlt, imageCredit } = service as PhotographedService;
++
++  if (image) {
++    return (
++      <figure className={`dealer-panel overflow-hidden ${className}`}>
++        {/* 16/10 matches the vehicle cards elsewhere on the site. The width and
++            height attributes declare that ratio so the page does not reflow
++            while the file loads; object-cover absorbs any real-world ratio. */}
++        <div className="aspect-[16/10] bg-[color:var(--surface)] img-zoom">
++          <img
++            src={image}
++            sizes={sizes}
++            alt={imageAlt ?? service.name}
++            width={1280}
++            height={800}
++            loading="lazy"
++            decoding="async"
++            className="w-full h-full object-cover"
++          />
++        </div>
++        {imageCredit ? (
++          <figcaption className="border-t border-border px-4 py-3 text-[11px] leading-relaxed text-muted-foreground">
++            {imageCredit}
++          </figcaption>
++        ) : null}
++      </figure>
++    );
++  }
++
++  return (
++    // A quiet brand plate, not a caption. The panel sits directly beside the
++    // page heading on large screens and directly above it on a phone, so it must
++    // not carry the kicker or the service name: printing either would show the
++    // reader the same two lines twice, stacked, which reads as a fault rather
++    // than as a design. Decorative for assistive technology; `data-photo-brief`
++    // carries the art direction from the catalogue for whoever sources the
++    // photograph, and is invisible to visitors.
++    <div
++      aria-hidden="true"
++      data-photo-brief={service.photo}
++      className={`dealer-panel relative overflow-hidden ${className}`}
++    >
++      <div
++        className="absolute inset-0 opacity-[0.07] pointer-events-none"
++        style={{ background: "radial-gradient(70% 90% at 100% 0%, var(--gold), transparent)" }}
++      />
++      {/* w-full keeps the width definite. With width:auto the aspect ratio is
++          resolved from min-height instead (190 × 1.6 = 304px), which overflows
++          the panel below about 350px. */}
++      <div className="relative w-full aspect-[16/10] min-h-[190px] p-6 sm:p-8 flex flex-col items-center justify-center gap-5">
++        <BrandWordmark className="text-2xl sm:text-3xl opacity-25" />
++        <div className="luxury-rule w-16" />
++      </div>
++    </div>
++  );
++}
+diff --git a/src/components/site-nav.tsx b/src/components/site-nav.tsx
+index c5e7d65..a2dfbed 100644
+--- a/src/components/site-nav.tsx
++++ b/src/components/site-nav.tsx
+@@ -5,9 +5,23 @@ import { EMAIL, EMAIL_HREF, TEL_HREF, WA_DISPLAY, waLink, waTrackedProps, telTra
+ import { track } from "@/lib/analytics";
+ import { openCookiePreferences } from "@/components/cookie-consent";
+ 
++// Shipping sits directly after Vehicles so the two business lines — the cars we
++// source and the freight we move — read as a pair rather than as a main item
++// and an afterthought.
++//
++// Six items do not fit the header at its old spacing. Measured at 1024px, the
++// narrowest viewport that shows the desktop nav: content box 960px, brand 189,
++// nav 533, right cluster 238 — exactly full, with no slack at all. A sixth link
++// costs 106px (the 70px label plus one 36px gap) and the wider tagline another
++// 41. The two savings that pay for it are on the header row below: the nav gap
++// drops to 24px until xl, and the phone number hides across 1024-1279. That
++// leaves 27px either side of the nav at 1024 and 48px from 1280. Re-measure
++// with agent-e/measure-nav.mjs before adding a seventh item — there is no room
++// left for one at 1024 without dropping something.
+ const NAV_LINKS = [
+   { to: "/", hash: "services", label: "Services" },
+   { to: "/cars", label: "Vehicles" },
++  { to: "/shipping", label: "Shipping" },
+   { to: "/", hash: "destinations", label: "Destinations" },
+   { to: "/", hash: "process", label: "Process" },
+   { to: "/", hash: "contact", label: "Contact" },
+@@ -95,11 +109,17 @@ export function SiteNav() {
+         <Link to="/" onClick={() => setOpen(false)} className="flex items-center gap-3 group">
+           <div className="leading-tight">
+             <BrandWordmark className="text-[21px]" />
+-            <div className="text-[8px] uppercase tracking-[0.42em] text-primary/75 hidden sm:block mt-0.5 font-sans">Private vehicle sourcing</div>
++            {/* The tagline names both business lines. It sets the brand block's
++                width, so it is also the header's tightest budget line: at 1024
++                every 10px here comes straight off the gap before the nav. */}
++            <div className="text-[8px] uppercase tracking-[0.42em] text-primary/75 hidden sm:block mt-0.5 font-sans">Car sourcing · Export freight</div>
+           </div>
+         </Link>
+ 
+-        <nav className="hidden lg:flex items-center gap-9">
++        {/* gap-6 until xl: six links at the old 36px gap overflow 1024px. The
++            0.22em tracking on nav-link-luxury adds ~2.4px of trailing space to
++            every label, so the optical gap stays close to 26px. */}
++        <nav className="hidden lg:flex items-center gap-6 xl:gap-9">
+           {NAV_LINKS.map((l) => (
+             <Link key={l.label} to={l.to} hash={"hash" in l ? l.hash : undefined} className="nav-link-luxury relative after:absolute after:left-0 after:-bottom-2 after:h-px after:w-0 after:bg-primary hover:after:w-full after:transition-all after:duration-300">
+               {l.label}
+@@ -108,7 +128,12 @@ export function SiteNav() {
+         </nav>
+ 
+         <div className="flex items-center gap-2">
+-          <a href={WA_QUOTE} {...waTrackedProps("nav")} className="hidden md:inline-flex nav-link-luxury mr-3">{WA_DISPLAY}</a>
++          {/* Shown from md while the burger is still in charge, hidden again
++              across 1024-1279 where the six-item desktop nav needs the 140px
++              this costs, then back from xl. It is the only removable thing on
++              this row: the Quote button beside it opens the same WhatsApp
++              thread, so the number is never the sole route to us. */}
++          <a href={WA_QUOTE} {...waTrackedProps("nav")} className="hidden md:max-lg:inline-flex xl:inline-flex nav-link-luxury mr-3">{WA_DISPLAY}</a>
+           <a href={WA_QUOTE} {...waTrackedProps("nav")} onClick={() => { track("cta_click", { cta: "nav_quote" }); track("whatsapp_click", { location: "nav" }); }} className="btn-gold !py-2.5 !px-4 hidden sm:inline-flex">Quote</a>
+           <button
+             ref={toggleRef}
+@@ -140,7 +165,16 @@ export function SiteNav() {
+         className={`lg:hidden absolute inset-x-0 top-full h-[calc(100dvh-4rem)] md:h-[calc(100dvh-5rem)] z-40 transition-all duration-500 ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+       >
+         <div className="absolute inset-0 bg-background/95 backdrop-blur-2xl" onClick={closeMenu} />
+-        <nav className="relative max-h-full overflow-y-auto overscroll-contain container-x pt-8 pb-10 flex flex-col gap-1">
++        {/* The drawer has always scrolled on a short phone — 648px of content
++            against a 504px box at 320x568 before Shipping was added — which is
++            why this scroller exists at all. What can be held is the fold: six
++            65px nav rows plus the gold Quote button needed 521px at the default
++            spacing, 17px more than a 320x568 screen has. The two
++            height-conditional trims below (12px off the top padding here, 16px
++            off the button's margin) bring the set to 494px, so all six links
++            and the primary CTA sit above the fold. They fire only under 600px
++            of viewport height; 360x640 upwards is untouched. */}
++        <nav className="relative max-h-full overflow-y-auto overscroll-contain container-x pt-8 [@media(max-height:600px)]:pt-5 pb-10 flex flex-col gap-1">
+           {NAV_LINKS.map((l, i) => (
+             <Link
+               key={l.label}
+@@ -154,7 +188,7 @@ export function SiteNav() {
+               <span className="text-primary text-lg opacity-60 group-hover:translate-x-1 transition-transform">→</span>
+             </Link>
+           ))}
+-          <a href={WA_QUOTE} {...waTrackedProps("nav")} onClick={() => { track("cta_click", { cta: "mobile_quote" }); track("whatsapp_click", { location: "nav" }); setOpen(false); }} className="btn-gold mt-8 w-full !py-4">Get a Landed Quote →</a>
++          <a href={WA_QUOTE} {...waTrackedProps("nav")} onClick={() => { track("cta_click", { cta: "mobile_quote" }); track("whatsapp_click", { location: "nav" }); setOpen(false); }} className="btn-gold mt-8 [@media(max-height:600px)]:mt-4 w-full !py-4">Get a Landed Quote →</a>
+           <a href={TEL_HREF} {...telTrackedProps("nav")} onClick={() => { track("call_click", { location: "nav" }); setOpen(false); }} className="btn-outline mt-3 w-full !py-4">Call {WA_DISPLAY}</a>
+           <div className="mt-8 space-y-1 text-sm text-muted-foreground">
+             <div><a href={EMAIL_HREF} {...emailTrackedProps("nav")} className="hover:text-foreground transition-colors">{EMAIL}</a></div>
+@@ -176,11 +210,15 @@ export function SiteFooter() {
+           <p className="text-sm text-muted-foreground mt-4 max-w-sm leading-relaxed">
+             We source cars and ship them into every West African country from the UK, Europe, and Asia — Mercedes, Jeep, Toyota, Land Rover, BYD and more. Full logistics right to the point of delivery.
+           </p>
++          <p className="text-sm text-muted-foreground mt-4 max-w-sm leading-relaxed">
++            We also run export freight for cargo of every kind — containers, plant, oversized pieces, household effects and vehicles you already own — from any origin to any destination.
++          </p>
+         </div>
+         <div>
+           <div className="text-xs uppercase tracking-[0.18em] text-primary font-semibold">Explore</div>
+           <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
+             <li><Link to="/cars" className="hover:text-foreground transition-colors">Vehicle Directory</Link></li>
++            <li><Link to="/shipping" className="hover:text-foreground transition-colors">Freight &amp; Logistics</Link></li>
+             <li><Link to="/" hash="destinations" className="hover:text-foreground transition-colors">Destinations</Link></li>
+             <li><Link to="/" hash="services" className="hover:text-foreground transition-colors">Services</Link></li>
+             <li><Link to="/" hash="process" className="hover:text-foreground transition-colors">Process</Link></li>
+diff --git a/src/lib/contact.ts b/src/lib/contact.ts
+index ad0f5b0..a8bccd3 100644
+--- a/src/lib/contact.ts
++++ b/src/lib/contact.ts
+@@ -22,7 +22,9 @@ export const waAnchorProps = {
+ 
+ type WaLocation =
+   | "nav" | "hero" | "inquiry_dialog" | "car_detail" | "country_page"
+-  | "footer" | "fab" | "ship_dialog" | "contact_section" | "featured";
++  | "footer" | "fab" | "ship_dialog" | "contact_section" | "featured"
++  // Freight and logistics surfaces.
++  | "shipping_hub" | "service_page" | "freight_dialog";
+ 
+ /** Anchor props for a WhatsApp link that also fires a consent-gated analytics event. */
+ export function waTrackedProps(location: WaLocation, extras: { vehicle?: string; country?: string } = {}) {
+diff --git a/src/lib/services.ts b/src/lib/services.ts
+new file mode 100644
+index 0000000..e6e4d06
+--- /dev/null
++++ b/src/lib/services.ts
+@@ -0,0 +1,329 @@
++// The freight and logistics catalogue.
++//
++// This is the single source of truth for what LWD Africa says it does beyond
++// sourcing cars. Copy lives here rather than in the routes so the hub page, the
++// service pages, the quote flow and the structured data cannot drift apart.
++//
++// Discipline for anyone editing this file: state capability, never invent
++// specifics. No prices, no guaranteed transit times, no named carriers, agents,
++// certifications or facilities unless the owner has confirmed them in writing.
++// The site's credibility is the asset being protected here.
++
++export interface Service {
++  slug: string;
++  /** Short name, used in the nav, cards and breadcrumbs. */
++  name: string;
++  /** Uppercase kicker above the heading, in the site's existing style. */
++  kicker: string;
++  /** One sentence. Used on cards and as the meta description seed. */
++  summary: string;
++  /** Two or three sentences for the top of the service page. */
++  intro: string;
++  /** What the service covers. Shown as a checked list. */
++  includes: string[];
++  /** What we need from the customer before we can quote. Drives the quote flow. */
++  needed: string[];
++  /** Typical cargo, for the "is this me?" test. */
++  typical: string[];
++  /** Plain description of the photograph this page wants. */
++  photo: string;
++  /**
++   * Photography, added once it has been sourced and licensed. Until then the
++   * photo slot renders a deliberate panel rather than an empty box, so a
++   * missing image never looks like a fault. Dropping a picture in is one line.
++   */
++  image?: string;
++  /** Alt text describing the actual photograph. Falls back to the service name. */
++  imageAlt?: string;
++  /** Credit line, rendered under the picture and mirrored on /image-credits. */
++  imageCredit?: string;
++}
++
++export const SERVICES: Service[] = [
++  {
++    slug: "vehicle-shipping",
++    name: "Vehicle shipping, A to B",
++    kicker: "You already own it",
++    summary:
++      "You own the car; we move it. Any origin to any destination, by RO-RO or in a container.",
++    intro:
++      "Not every vehicle we move is one we sourced. If you already own the car, the pickup or the van and you need it somewhere else in the world, we handle the same chain we run for our own buyers: collection, export documentation, sea freight, customs at both ends and inland delivery. Relocations, returning residents, fleet moves and one-off private shipments all work the same way.",
++    includes: [
++      "Collection from a home, dealer, auction house or compound",
++      "Export documentation and the bill of lading",
++      "RO-RO or container, whichever suits the vehicle and the route",
++      "Optional cargo insurance for the vehicle's declared value",
++      "Customs clearance at origin and destination",
++      "Inland delivery to the final address",
++    ],
++    needed: [
++      "Make, model and year",
++      "Where it is now, and where it needs to go",
++      "Whether it runs and drives",
++      "Roughly when it is ready to collect",
++    ],
++    typical: ["Private cars", "4x4s and pickups", "Vans and minibuses", "Motorcycles", "Non-runners"],
++    photo:
++      "A car being driven up the ramp into the hold of a RO-RO vessel, or a car secured inside a shipping container.",
++  },
++  {
++    slug: "container-freight",
++    name: "Container freight",
++    kicker: "FCL and LCL",
++    summary:
++      "A full container for a large consignment, or a share of one when you have less than a full load.",
++    intro:
++      "Container freight is the workhorse of everything we move that is not a running vehicle. Take a full container to yourself when the volume justifies it and you want the doors sealed from origin to destination, or share one when you do not. We quote both so you can see which is actually cheaper for your consignment rather than guessing.",
++    includes: [
++      "20ft, 40ft and 40ft high cube containers",
++      "Groupage and shared loads for part consignments",
++      "Loading, securing and lashing",
++      "Export and import documentation",
++      "Optional cargo insurance",
++      "Delivery to the door at destination",
++    ],
++    needed: [
++      "What the cargo is",
++      "Weight and dimensions, or an estimate of volume",
++      "Collection address and delivery address",
++      "Ready date",
++    ],
++    typical: ["General cargo", "Trade goods", "Building materials", "Spare parts", "Mixed consignments"],
++    photo:
++      "Containers stacked on a quayside with a gantry crane, or a container being loaded at a warehouse.",
++  },
++  {
++    slug: "ro-ro",
++    name: "RO-RO shipping",
++    kicker: "Roll on, roll off",
++    summary:
++      "Anything that drives, driven aboard and driven off. Usually the cheapest way to move a single running vehicle.",
++    intro:
++      "RO-RO vessels carry wheeled cargo on their own wheels, which removes the cost of a container and the labour of loading one. For a single running vehicle it is normally the most economical option on the water. Anything self-propelled qualifies: cars, trucks, buses, tractors, wheeled plant.",
++    includes: [
++      "Booking on scheduled RO-RO sailings",
++      "Port handling at both ends",
++      "Export declarations and the bill of lading",
++      "Optional cargo insurance",
++      "Customs clearance and onward delivery",
++    ],
++    needed: [
++      "What the unit is, and whether it drives under its own power",
++      "Dimensions and weight",
++      "Origin and destination ports or addresses",
++      "Ready date",
++    ],
++    typical: ["Cars and 4x4s", "Trucks and buses", "Tractors", "Wheeled plant", "Trailers"],
++    photo: "A RO-RO vessel with its stern ramp down and vehicles being driven aboard.",
++  },
++  {
++    slug: "breakbulk-and-project-cargo",
++    name: "Breakbulk and project cargo",
++    kicker: "Too big for a box",
++    summary:
++      "Oversized, overweight and awkward loads that will not go in a container and need to be planned rather than booked.",
++    intro:
++      "Some cargo does not fit the standard system. When a piece is too tall, too wide or too heavy for a container, it moves as breakbulk: lifted aboard, stowed and secured as its own unit. This is planning work as much as freight work, and it starts with the dimensions and the lifting points rather than with a price list.",
++    includes: [
++      "Route and lift planning before anything is booked",
++      "Flat rack and open top options where they fit",
++      "Breakbulk stowage for pieces that need it",
++      "Lifting, securing and surveying arrangements",
++      "Documentation for oversized movements",
++      "Inland haulage at both ends, including permits where required",
++    ],
++    needed: [
++      "Exact dimensions and weight of each piece",
++      "Photographs if you have them",
++      "Lifting points, or whether the piece can be slung",
++      "Collection and delivery addresses, and site access at both",
++    ],
++    typical: ["Generators", "Transformers", "Tanks and vessels", "Steel structures", "Boats"],
++    photo:
++      "A crane lifting an oversized industrial piece onto a vessel, or heavy cargo secured on a flat rack.",
++  },
++  {
++    slug: "plant-and-machinery",
++    name: "Plant and machinery",
++    kicker: "Working equipment",
++    summary:
++      "Excavators, loaders, generators and production equipment, moved with the paperwork and the securing they need.",
++    intro:
++      "Plant moves differently from general cargo. It is heavy, it is often dirty, and both customs and the shipping line care about how it is prepared. We arrange cleaning and securing, get the documentation right for used equipment, and choose between RO-RO, flat rack and container by what the machine actually is rather than by habit.",
++    includes: [
++      "Assessment of the right mode for the machine",
++      "Cleaning and preparation requirements",
++      "Securing, chocking and lashing",
++      "Documentation for used plant and equipment",
++      "Optional cargo insurance",
++      "Delivery to site, including access planning",
++    ],
++    needed: [
++      "Make, model and serial or fleet number",
++      "Dimensions, weight and whether it is self-propelled",
++      "Current location and destination",
++      "Whether it is in working order",
++    ],
++    typical: ["Excavators", "Wheel loaders", "Generators", "Compressors", "Agricultural machinery"],
++    photo: "An excavator or wheel loader being loaded for shipment, secured on a trailer or flat rack.",
++  },
++  {
++    slug: "personal-effects",
++    name: "Personal effects and removals",
++    kicker: "Moving a household",
++    summary:
++      "Household goods and personal belongings, packed, shipped and cleared, including alongside a vehicle.",
++    intro:
++      "Households move for work, for family and for good. Personal effects have their own customs treatment, which is where most self-managed shipments come unstuck, so the inventory and the declarations matter as much as the freight. We can ship a household on its own or consolidate it with a vehicle in the same movement.",
++    includes: [
++      "Packing materials and packing where you want it",
++      "Inventory preparation for customs",
++      "Full or shared container",
++      "Consolidation with a vehicle in the same shipment",
++      "Customs clearance for personal effects",
++      "Delivery to the new address",
++    ],
++    needed: [
++      "Roughly how much there is, in rooms or in cubic metres",
++      "Origin and destination addresses",
++      "Whether a vehicle is going with it",
++      "When you need it there",
++    ],
++    typical: ["Household furniture", "Appliances", "Personal belongings", "Returning residents", "Relocations"],
++    photo: "Packed household cartons and wrapped furniture being loaded into a container.",
++  },
++  {
++    slug: "customs-clearance",
++    name: "Customs clearance and documentation",
++    kicker: "The part that goes wrong",
++    summary:
++      "Export and import declarations, the bill of lading and destination formalities, prepared and lodged.",
++    intro:
++      "Most delays are paperwork, not ships. Declarations that do not match the cargo, a missing certificate, a value that cannot be evidenced: any of them will hold a consignment at the port and start demurrage running. We prepare the documentation at origin and handle the formalities at destination so that the cargo clears on the strength of what was declared.",
++    includes: [
++      "Export declarations at origin",
++      "Bill of lading and shipping documents",
++      "Import entries and destination formalities",
++      "Duty and tax position explained before you commit",
++      "Support on inspections and queries",
++    ],
++    needed: [
++      "What the cargo is and what it is worth",
++      "Commercial invoice or proof of purchase",
++      "Origin and destination countries",
++      "Any documents already issued",
++    ],
++    typical: ["Vehicles", "Commercial consignments", "Personal effects", "Used plant"],
++    photo: "A port terminal gate or customs office, or shipping documentation on a desk at a terminal.",
++  },
++  {
++    slug: "inland-delivery",
++    name: "Inland haulage and delivery",
++    kicker: "The last leg",
++    summary: "Collection before the port and delivery after it, including landlocked destinations.",
++    intro:
++      "A port is rarely where cargo starts or where it needs to end up. We collect from the address at origin and deliver to the address at destination, which for landlocked countries means an onward road leg from the nearest coastal port. Site access is worth discussing early, because it decides the vehicle we send.",
++    includes: [
++      "Collection from any address at origin",
++      "Trucking to and from the port",
++      "Onward road transport to landlocked destinations",
++      "Access assessment before delivery",
++      "Delivery to the final address",
++    ],
++    needed: [
++      "Collection and delivery addresses",
++      "What the cargo is, and its weight and dimensions",
++      "Access at both ends, including any restriction on vehicle size",
++      "Preferred dates",
++    ],
++    typical: ["Door to door movements", "Port to inland cities", "Landlocked destinations", "Multi drop deliveries"],
++    photo: "A cargo truck on an open road, or a container being delivered by truck to a yard.",
++  },
++  {
++    slug: "cargo-insurance",
++    name: "Cargo insurance",
++    kicker: "For the value, not the weight",
++    summary: "Optional cover arranged for the declared value of the cargo, for the whole journey.",
++    intro:
++      "A carrier's standard liability is calculated by weight, not by what the cargo is worth, which is why an uninsured loss is so often a bad surprise. Cover is arranged separately, against the value you declare, and it is worth having on anything valuable, fragile or hard to replace. It is optional on every shipment and quoted as a separate line so you can see exactly what it costs.",
++    includes: [
++      "Cover arranged against your declared value",
++      "Quoted as a separate line, never bundled invisibly",
++      "Cover for the whole movement, not just the sea leg",
++      "Support with a claim if one is ever needed",
++    ],
++    needed: [
++      "What the cargo is",
++      "The value you want covered",
++      "Origin and destination",
++      "Whether it is new or used",
++    ],
++    typical: ["High value vehicles", "Machinery", "Personal effects", "Fragile cargo"],
++    photo: "A vessel at sea in open water, or cargo being surveyed before loading.",
++  },
++  {
++    slug: "warehousing-and-consolidation",
++    name: "Warehousing and consolidation",
++    kicker: "Before it sails",
++    summary:
++      "Somewhere for cargo to wait, and a way to combine several deliveries into one shipment.",
++    intro:
++      "Cargo rarely arrives from every supplier on the same day. Consolidation means several deliveries can be received, checked and held until the shipment is complete, then loaded together. It turns a series of part loads into one movement, which is usually cheaper and always simpler to track.",
++    includes: [
++      "Receiving deliveries from multiple suppliers",
++      "Checking goods in against your order",
++      "Short term storage while a shipment is assembled",
++      "Consolidated loading into container or breakbulk",
++      "One set of documents for the combined shipment",
++    ],
++    needed: [
++      "How many deliveries, and roughly what volume",
++      "How long the cargo needs to be held",
++      "Where the shipment is going",
++      "Target sailing or arrival date",
++    ],
++    typical: ["Multi supplier orders", "Trade consignments", "Spare parts", "Combined vehicle and goods shipments"],
++    photo: "A warehouse interior with palletised goods and a forklift, or goods staged for consolidation.",
++  },
++];
++
++export const getService = (slug: string) => SERVICES.find((s) => s.slug === slug);
++
++/**
++ * Cargo types offered in the freight quote flow. Kept deliberately short: it is a
++ * routing question, not an inventory.
++ */
++export const CARGO_TYPES = [
++  "A vehicle",
++  "Container freight",
++  "Plant or machinery",
++  "Oversized or project cargo",
++  "Personal effects",
++  "Something else",
++] as const;
++
++/**
++ * Regions we quote from. The list exists to make the worldwide scope legible, not
++ * to imply an office in each one. "Anywhere else" is a first class option because
++ * the honest answer is that we quote any lane.
++ */
++export const ORIGIN_REGIONS = [
++  "United Kingdom",
++  "Europe",
++  "Asia",
++  "North America",
++  "Middle East",
++  "Africa",
++  "Anywhere else",
++] as const;
++
++export const DESTINATION_REGIONS = [
++  "West Africa",
++  "Rest of Africa",
++  "Europe",
++  "United Kingdom",
++  "Asia",
++  "North America",
++  "Middle East",
++  "Anywhere else",
++] as const;
+diff --git a/src/routeTree.gen.ts b/src/routeTree.gen.ts
+index 98f9e9a..f0a4253 100644
+--- a/src/routeTree.gen.ts
++++ b/src/routeTree.gen.ts
+@@ -14,10 +14,12 @@ import { Route as CarsRouteImport } from './routes/cars_'
+ import { Route as CookiesRouteImport } from './routes/cookies'
+ import { Route as ImageCreditsRouteImport } from './routes/image-credits'
+ import { Route as PrivacyRouteImport } from './routes/privacy'
++import { Route as ShippingRouteImport } from './routes/shipping_'
+ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+ import { Route as TermsRouteImport } from './routes/terms'
+ import { Route as CarsSlugRouteImport } from './routes/cars.$slug'
+ import { Route as ShipToCountryRouteImport } from './routes/ship-to.$country'
++import { Route as ShippingServiceRouteImport } from './routes/shipping.$service'
+ 
+ const IndexRoute = IndexRouteImport.update({
+   id: '/',
+@@ -44,6 +46,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
+   path: '/privacy',
+   getParentRoute: () => rootRouteImport,
+ } as any)
++const ShippingRoute = ShippingRouteImport.update({
++  id: '/shipping_',
++  path: '/shipping',
++  getParentRoute: () => rootRouteImport,
++} as any)
+ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+   id: '/sitemap.xml',
+   path: '/sitemap.xml',
+@@ -64,6 +71,11 @@ const ShipToCountryRoute = ShipToCountryRouteImport.update({
+   path: '/ship-to/$country',
+   getParentRoute: () => rootRouteImport,
+ } as any)
++const ShippingServiceRoute = ShippingServiceRouteImport.update({
++  id: '/shipping/$service',
++  path: '/shipping/$service',
++  getParentRoute: () => rootRouteImport,
++} as any)
+ 
+ export interface FileRoutesByFullPath {
+   '/': typeof IndexRoute
+@@ -71,10 +83,12 @@ export interface FileRoutesByFullPath {
+   '/cookies': typeof CookiesRoute
+   '/image-credits': typeof ImageCreditsRoute
+   '/privacy': typeof PrivacyRoute
++  '/shipping': typeof ShippingRoute
+   '/sitemap.xml': typeof SitemapDotxmlRoute
+   '/terms': typeof TermsRoute
+   '/cars/$slug': typeof CarsSlugRoute
+   '/ship-to/$country': typeof ShipToCountryRoute
++  '/shipping/$service': typeof ShippingServiceRoute
+ }
+ export interface FileRoutesByTo {
+   '/': typeof IndexRoute
+@@ -82,10 +96,12 @@ export interface FileRoutesByTo {
+   '/cookies': typeof CookiesRoute
+   '/image-credits': typeof ImageCreditsRoute
+   '/privacy': typeof PrivacyRoute
++  '/shipping': typeof ShippingRoute
+   '/sitemap.xml': typeof SitemapDotxmlRoute
+   '/terms': typeof TermsRoute
+   '/cars/$slug': typeof CarsSlugRoute
+   '/ship-to/$country': typeof ShipToCountryRoute
++  '/shipping/$service': typeof ShippingServiceRoute
+ }
+ export interface FileRoutesById {
+   __root__: typeof rootRouteImport
+@@ -94,10 +110,12 @@ export interface FileRoutesById {
+   '/cookies': typeof CookiesRoute
+   '/image-credits': typeof ImageCreditsRoute
+   '/privacy': typeof PrivacyRoute
++  '/shipping_': typeof ShippingRoute
+   '/sitemap.xml': typeof SitemapDotxmlRoute
+   '/terms': typeof TermsRoute
+   '/cars/$slug': typeof CarsSlugRoute
+   '/ship-to/$country': typeof ShipToCountryRoute
++  '/shipping/$service': typeof ShippingServiceRoute
+ }
+ export interface FileRouteTypes {
+   fileRoutesByFullPath: FileRoutesByFullPath
+@@ -107,10 +125,12 @@ export interface FileRouteTypes {
+     | '/cookies'
+     | '/image-credits'
+     | '/privacy'
++    | '/shipping'
+     | '/sitemap.xml'
+     | '/terms'
+     | '/cars/$slug'
+     | '/ship-to/$country'
++    | '/shipping/$service'
+   fileRoutesByTo: FileRoutesByTo
+   to:
+     | '/'
+@@ -118,10 +138,12 @@ export interface FileRouteTypes {
+     | '/cookies'
+     | '/image-credits'
+     | '/privacy'
++    | '/shipping'
+     | '/sitemap.xml'
+     | '/terms'
+     | '/cars/$slug'
+     | '/ship-to/$country'
++    | '/shipping/$service'
+   id:
+     | '__root__'
+     | '/'
+@@ -129,10 +151,12 @@ export interface FileRouteTypes {
+     | '/cookies'
+     | '/image-credits'
+     | '/privacy'
++    | '/shipping_'
+     | '/sitemap.xml'
+     | '/terms'
+     | '/cars/$slug'
+     | '/ship-to/$country'
++    | '/shipping/$service'
+   fileRoutesById: FileRoutesById
+ }
+ export interface RootRouteChildren {
+@@ -141,10 +165,12 @@ export interface RootRouteChildren {
+   CookiesRoute: typeof CookiesRoute
+   ImageCreditsRoute: typeof ImageCreditsRoute
+   PrivacyRoute: typeof PrivacyRoute
++  ShippingRoute: typeof ShippingRoute
+   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+   TermsRoute: typeof TermsRoute
+   CarsSlugRoute: typeof CarsSlugRoute
+   ShipToCountryRoute: typeof ShipToCountryRoute
++  ShippingServiceRoute: typeof ShippingServiceRoute
+ }
+ 
+ declare module '@tanstack/react-router' {
+@@ -184,6 +210,13 @@ declare module '@tanstack/react-router' {
+       preLoaderRoute: typeof PrivacyRouteImport
+       parentRoute: typeof rootRouteImport
+     }
++    '/shipping_': {
++      id: '/shipping_'
++      path: '/shipping'
++      fullPath: '/shipping'
++      preLoaderRoute: typeof ShippingRouteImport
++      parentRoute: typeof rootRouteImport
++    }
+     '/sitemap.xml': {
+       id: '/sitemap.xml'
+       path: '/sitemap.xml'
+@@ -212,6 +245,13 @@ declare module '@tanstack/react-router' {
+       preLoaderRoute: typeof ShipToCountryRouteImport
+       parentRoute: typeof rootRouteImport
+     }
++    '/shipping/$service': {
++      id: '/shipping/$service'
++      path: '/shipping/$service'
++      fullPath: '/shipping/$service'
++      preLoaderRoute: typeof ShippingServiceRouteImport
++      parentRoute: typeof rootRouteImport
++    }
+   }
+ }
+ 
+@@ -221,10 +261,12 @@ const rootRouteChildren: RootRouteChildren = {
+   CookiesRoute: CookiesRoute,
+   ImageCreditsRoute: ImageCreditsRoute,
+   PrivacyRoute: PrivacyRoute,
++  ShippingRoute: ShippingRoute,
+   SitemapDotxmlRoute: SitemapDotxmlRoute,
+   TermsRoute: TermsRoute,
+   CarsSlugRoute: CarsSlugRoute,
+   ShipToCountryRoute: ShipToCountryRoute,
++  ShippingServiceRoute: ShippingServiceRoute,
+ }
+ export const routeTree = rootRouteImport
+   ._addFileChildren(rootRouteChildren)
+diff --git a/src/routes/__root.tsx b/src/routes/__root.tsx
+index 937d194..030f0de 100644
+--- a/src/routes/__root.tsx
++++ b/src/routes/__root.tsx
+@@ -80,7 +80,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
+       { name: "viewport", content: "width=device-width, initial-scale=1" },
+       { title: "LWD Africa — Car Export to Sierra Leone, Nigeria, Ghana & All West Africa" },
+       { name: "description", content: "LWD Africa sources and ships Mercedes G-Wagon, Toyota Land Cruiser, Jeep Wrangler, Land Rover Defender, Range Rover, BYD, Lexus and Ford from the UK, Europe & Asia into every West African country. Full door-to-door logistics, LHD and RHD. WhatsApp +44 7568 765929." },
+-      { name: "keywords", content: "LWD Africa, LWD cars Africa, car export West Africa, ship car to Sierra Leone, ship car to Nigeria, ship car to Ghana, ship car to Liberia, ship car to Senegal, ship car to Ivory Coast, Mercedes G-Wagon Africa, Toyota Land Cruiser 300 export, Jeep Wrangler Nigeria, Land Rover Defender Ghana, Range Rover Africa, BYD Atto 3 West Africa, Lexus LX 600 export, RO-RO car shipping, container car shipping, UK to Freetown, UK to Lagos, UK to Tema, UK to Dakar, LHD RHD import Africa, car sourcing agent West Africa" },
++      { name: "keywords", content: "LWD Africa, LWD cars Africa, car export West Africa, ship car to Sierra Leone, ship car to Nigeria, ship car to Ghana, ship car to Liberia, ship car to Senegal, ship car to Ivory Coast, Mercedes G-Wagon Africa, Toyota Land Cruiser 300 export, Jeep Wrangler Nigeria, Land Rover Defender Ghana, Range Rover Africa, BYD Atto 3 West Africa, Lexus LX 600 export, RO-RO car shipping, container car shipping, UK to Freetown, UK to Lagos, UK to Tema, UK to Dakar, LHD RHD import Africa, car sourcing agent West Africa, export logistics, freight forwarding, container shipping FCL LCL, RO-RO shipping, breakbulk, project cargo, plant and machinery shipping, personal effects shipping, customs clearance, inland haulage, cargo insurance, warehousing and consolidation, ship my car from A to B" },
+       { name: "author", content: "LWD Africa" },
+       { name: "publisher", content: "LWD Africa" },
+       { name: "robots", content: "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" },
+@@ -124,14 +124,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
+         children: JSON.stringify({
+           "@context": "https://schema.org",
+           "@type": "Organization",
++          // Site-wide entity id. This node ships on every page, so it is the one
++          // thing the car business and the freight business can both point at:
++          // without it they read as two unrelated companies.
++          "@id": "https://lwdcarsafrica.com/#organization",
+           name: "LWD Africa",
+           legalName: "LWD Africa",
+           url: "https://lwdcarsafrica.com",
+           logo: "https://lwdcarsafrica.com/favicon.svg",
+           slogan: "Sourced. Shipped. Delivered.",
+-          description: "Specialist car sourcing, export and door-to-door logistics from the UK, Europe and Asia into every West African country.",
++          description: "Specialist car sourcing and export freight. LWD Africa sources vehicles from the UK, Europe and Asia into every West African country, and moves cargo of every kind, on any lane, door to door.",
+           areaServed: [
+-            "Sierra Leone","Nigeria","Ghana","Liberia","Gambia","Senegal","Ivory Coast","Guinea","Guinea-Bissau","Mali","Burkina Faso","Togo","Benin","Niger","Cape Verde","Mauritania",
++            "Sierra Leone","Nigeria","Ghana","Liberia","Gambia","Senegal","Ivory Coast","Guinea","Guinea-Bissau","Mali","Burkina Faso","Togo","Benin","Niger","Cape Verde","Mauritania","Worldwide",
+           ],
+           sameAs: ["https://wa.me/447568765929"],
+           contactPoint: [{
+diff --git a/src/routes/cars_.tsx b/src/routes/cars_.tsx
+index 3f066b3..bbb5957 100644
+--- a/src/routes/cars_.tsx
++++ b/src/routes/cars_.tsx
+@@ -114,6 +114,15 @@ function CarsPage() {
+           <p className="mt-4 text-sm text-primary/90 max-w-2xl leading-relaxed">
+             Every model here is available to source to order — tell us the one you want and we'll find it, LHD or RHD.
+           </p>
++          {/* The one cross-link on this page: a visitor who already owns the
++              vehicle has nothing to buy from this directory, and needs the
++              freight side instead. */}
++          <p className="mt-4 text-sm text-muted-foreground max-w-2xl leading-relaxed">
++            Already own the vehicle? We ship cars you already have — and cargo of every other kind — from any origin to any destination.{" "}
++            <Link to="/shipping" onClick={() => track("cta_click", { cta: "cars_to_freight" })} className="text-primary underline underline-offset-4 decoration-primary/40 hover:decoration-primary transition-colors">
++              Freight and logistics →
++            </Link>
++          </p>
+         </div>
+       </section>
+ 
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index e42f375..3777ddc 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -3,6 +3,8 @@ import { useState } from "react";
+ import { SiteNav, SiteFooter } from "@/components/site-nav";
+ import { InquiryDialog } from "@/components/inquiry-dialog";
+ import { ShipDialog } from "@/components/ship-dialog";
++import { FreightQuoteDialog } from "@/components/freight-quote-dialog";
++import { SERVICES } from "@/lib/services";
+ import { WhatsAppFab } from "@/components/whatsapp-fab";
+ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+ import { WEST_AFRICAN_COUNTRIES, CARS, BRANDS, type Car } from "@/lib/data";
+@@ -23,14 +25,14 @@ export const Route = createFileRoute("/")({
+   head: () => ({
+     meta: [
+       { title: "LWD Africa — Car Export to Sierra Leone, Nigeria, Ghana & All West Africa" },
+-      { name: "description", content: "LWD Africa sources and ships Mercedes G-Wagon, Toyota Land Cruiser, Jeep Wrangler, Land Rover Defender, Range Rover, BYD, Lexus and Ford from the UK, Europe & Asia into every West African country. Full door-to-door logistics, LHD and RHD. WhatsApp +44 7568 765929." },
++      { name: "description", content: "LWD Africa sources and ships Mercedes G-Wagon, Toyota Land Cruiser, Jeep Wrangler, Land Rover Defender, Range Rover, BYD, Lexus and Ford from the UK, Europe & Asia into every West African country. Full door-to-door logistics, LHD and RHD. We also move export freight of every kind, any cargo, any route. WhatsApp +44 7568 765929." },
+       { property: "og:title", content: "LWD Africa — Car Export to Sierra Leone, Nigeria, Ghana & All West Africa" },
+-      { property: "og:description", content: "LWD Africa sources and ships Mercedes G-Wagon, Toyota Land Cruiser, Jeep Wrangler, Land Rover Defender, Range Rover, BYD, Lexus and Ford from the UK, Europe & Asia into every West African country. Full door-to-door logistics, LHD and RHD. WhatsApp +44 7568 765929." },
++      { property: "og:description", content: "LWD Africa sources and ships Mercedes G-Wagon, Toyota Land Cruiser, Jeep Wrangler, Land Rover Defender, Range Rover, BYD, Lexus and Ford from the UK, Europe & Asia into every West African country. Full door-to-door logistics, LHD and RHD. We also move export freight of every kind, any cargo, any route. WhatsApp +44 7568 765929." },
+       { property: "og:type", content: "website" },
+       { property: "og:url", content: "https://lwdcarsafrica.com/" },
+       { name: "twitter:card", content: "summary_large_image" },
+       { name: "twitter:title", content: "LWD Africa — Car Export to Sierra Leone, Nigeria, Ghana & All West Africa" },
+-      { name: "twitter:description", content: "LWD Africa sources and ships Mercedes G-Wagon, Toyota Land Cruiser, Jeep Wrangler, Land Rover Defender, Range Rover, BYD, Lexus and Ford from the UK, Europe & Asia into every West African country. Full door-to-door logistics, LHD and RHD. WhatsApp +44 7568 765929." },
++      { name: "twitter:description", content: "LWD Africa sources and ships Mercedes G-Wagon, Toyota Land Cruiser, Jeep Wrangler, Land Rover Defender, Range Rover, BYD, Lexus and Ford from the UK, Europe & Asia into every West African country. Full door-to-door logistics, LHD and RHD. We also move export freight of every kind, any cargo, any route. WhatsApp +44 7568 765929." },
+       { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/A4kmr2gMZSeny4vrN8kxaiJzVvY2/social-images/social-1784449781304-IMG_1085.webp" },
+       { property: "og:image:secure_url", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/A4kmr2gMZSeny4vrN8kxaiJzVvY2/social-images/social-1784449781304-IMG_1085.webp" },
+       { property: "og:image:alt", content: "LWD Africa — luxury vehicles ready for export to West Africa" },
+@@ -71,9 +73,16 @@ export const Route = createFileRoute("/")({
+           areaServed: WEST_AFRICAN_COUNTRIES.map((c) => ({ "@type": "Country", name: c.name })),
+           brand: BRANDS,
+           makesOffer: BRANDS.map((b) => ({ "@type": "Offer", itemOffered: { "@type": "Brand", name: b } })),
++          // The original six describe the sourcing business and stay first and
++          // unchanged. The seven after them are the freight line. No
++          // hasOfferCatalog here on purpose: /shipping carries one, and a
++          // second copy on this URL would split the signal between two pages.
+           serviceType: [
+             "Vehicle sourcing", "RO-RO car shipping", "Container car shipping",
+             "Customs clearance", "Door-to-door delivery", "Marine insurance",
++            "Freight forwarding", "Container freight", "Breakbulk and project cargo",
++            "Plant and machinery shipping", "Personal effects and removals",
++            "Inland haulage", "Warehousing and consolidation",
+           ],
+           email: "hello@lwdafrica.com",
+           address: { "@type": "PostalAddress", addressCountry: "GB", addressLocality: "London" },
+@@ -133,6 +142,7 @@ function Index() {
+   const [active, setActive] = useState<Car | null>(null);
+   const [mode, setMode] = useState<"details" | "inquire">("details");
+   const [shipCountry, setShipCountry] = useState<string | null>(null);
++  const [freightQuote, setFreightQuote] = useState(false);
+   const open = (c: Car, m: "details" | "inquire") => {
+     setMode(m);
+     setActive(c);
+@@ -147,6 +157,7 @@ function Index() {
+       <BrandStrip />
+       <WhyLWD />
+       <Services />
++      <Freight onQuote={() => { track("cta_click", { cta: "home_freight_quote" }); setFreightQuote(true); }} />
+       <Countries onShip={setShipCountry} />
+       <FeaturedCars featured={featured} open={open} />
+       <Process />
+@@ -155,6 +166,11 @@ function Index() {
+       <SiteFooter />
+       <InquiryDialog car={active} initialMode={mode} onClose={() => setActive(null)} />
+       <ShipDialog country={shipCountry} onClose={() => setShipCountry(null)} />
++      {/* Mounted here beside the other dialogs, outside every <section>: the
++          reveal animation leaves a permanent blur(0px) filter on sections and
++          articles, which would make one the containing block for anything
++          fixed inside it. */}
++      <FreightQuoteDialog open={freightQuote} onClose={() => setFreightQuote(false)} source="home_freight_section" />
+       <WhatsAppFab />
+     </div>
+   );
+@@ -183,12 +199,24 @@ function Hero() {
+             LWD Africa.
+             <span className="block text-champagne/90">Private cars, landed.</span>
+           </h1>
++          {/* The headline is the brand line and stays untouched. The second
++              sentence and the third button are the whole of the freight
++              business's claim on the first screen: one line that says it
++              exists, one button that goes to it.
++              The sentence is kept this short on purpose. Measured at 390x844 it
++              costs the paragraph one line; the fuller draft it replaced
++              ("And beyond the cars, we move freight of every kind — any cargo,
++              any route") cost two, and pushed the WhatsApp Quote button out of
++              the fold at 360x640. At 320x568 the hero's CTAs sit below the fold
++              either way — they always have — so the sentence is the only thing
++              a freight visitor can be shown on that first screen. */}
+           <p className="mt-6 text-base md:text-lg text-champagne/80 max-w-2xl leading-relaxed">
+-            Mercedes G-Wagon, Land Cruiser, Defender, Range Rover, Jeep, BYD and more — sourced, inspected, shipped, cleared and delivered to your address across West Africa.
++            Mercedes G-Wagon, Land Cruiser, Defender, Range Rover, Jeep, BYD and more — sourced, inspected, shipped, cleared and delivered to your address across West Africa. We also move freight — any cargo, any route.
+           </p>
+           <div className="mt-8 flex flex-wrap gap-3">
+             <Link to="/cars" onClick={() => track("cta_click", { cta: "hero_view_inventory" })} className="btn-gold">View Inventory</Link>
+             <a href={waLink("Hi LWD Africa, I'd like a landed quote.")} {...waTrackedProps("hero")} className="btn-outline">WhatsApp Quote</a>
++            <Link to="/shipping" onClick={() => track("cta_click", { cta: "hero_freight" })} className="btn-outline">Freight &amp; Logistics</Link>
+           </div>
+         </div>
+ 
+@@ -259,7 +287,11 @@ function Services() {
+   return (
+     <section id="services" className="container-x py-20 md:py-28">
+       <div className="max-w-3xl">
+-        <div className="eyebrow">What we do</div>
++        {/* "for cars" earns its keep now that the freight section follows: the
++            six cards below are a complete account of the sourcing business and
++            a partial one of the whole company. The panel under the grid points
++            at the other half rather than restating it. */}
++        <div className="eyebrow">What we do for cars</div>
+         <h2 className="mt-3 text-4xl md:text-6xl font-semibold leading-[0.95]">A private buying office for serious cars going into West Africa.</h2>
+         <p className="mt-6 text-muted-foreground max-w-xl leading-relaxed">No loose ends. We sell, source, inspect, document, ship, clear and deliver the vehicle to the final handover point.</p>
+       </div>
+@@ -272,6 +304,72 @@ function Services() {
+           </div>
+         ))}
+       </div>
++      <div className="mt-4 dealer-panel p-6 md:p-7 flex flex-wrap items-center justify-between gap-5">
++        <p className="text-sm text-muted-foreground max-w-xl leading-relaxed">
++          Everything above is the car service. Cargo that is not a vehicle we are buying for you — a container, plant, an oversized piece, a household, or a car you already own — is handled the same way, under freight and logistics.
++        </p>
++        <Link to="/shipping" onClick={() => track("cta_click", { cta: "services_to_freight" })} className="btn-outline shrink-0">
++          Freight &amp; Logistics
++        </Link>
++      </div>
++    </section>
++  );
++}
++
++/**
++ * The freight business, on the home page.
++ *
++ * Placed immediately after Services because that is where the page stops
++ * positioning and starts offering: Hero, Stats, BrandStrip and WhyLWD are all
++ * brand, Services is the first "here is the offer" block, and this is the
++ * second one. Everything after it — the destination map, the stock grid, the
++ * four steps — is car execution detail, so the second business line sits above
++ * the detail and below the pitch without displacing any of the car story.
++ *
++ * All copy is either the catalogue's own (src/lib/services.ts) or neutral
++ * connective writing. Nothing here states a price, a transit time, a carrier,
++ * a port or a partner.
++ */
++function Freight({ onQuote }: { onQuote: () => void }) {
++  return (
++    <section id="freight" className="border-t border-border bg-[color:var(--surface)] relative overflow-hidden">
++      <div className="absolute inset-0 opacity-[0.05] pointer-events-none" style={{ background: "radial-gradient(55% 70% at 85% 6%, var(--gold), transparent)" }} />
++      <div className="container-x py-20 md:py-28 relative">
++        <div className="max-w-3xl">
++          <div className="eyebrow">Freight and logistics</div>
++          <h2 className="mt-3 text-4xl md:text-6xl font-semibold leading-[0.95]">The same chain, for cargo of every kind.</h2>
++          <p className="mt-6 text-muted-foreground max-w-2xl leading-relaxed">
++            Containers, plant and machinery, oversized project pieces, household removals and vehicles you already own — we quote and run the whole movement. Collection, export documentation, sea freight, customs at both ends and inland delivery, from any origin to any destination.
++          </p>
++          <div className="mt-8 flex flex-wrap gap-3">
++            <button type="button" onClick={onQuote} className="btn-gold">Get a Freight Quote</button>
++            <Link to="/shipping" onClick={() => track("cta_click", { cta: "home_freight_hub" })} className="btn-outline">
++              All {SERVICES.length} Services
++            </Link>
++          </div>
++        </div>
++
++        {/* An index, not a second copy of the hub: name and kicker only, so the
++            breadth is legible at a glance and the detail stays on /shipping. */}
++        <ul className="mt-12 grid sm:grid-cols-2 gap-x-12 border-t border-border/60">
++          {SERVICES.map((s) => (
++            <li key={s.slug} className="border-b border-border/60">
++              <Link
++                to="/shipping/$service"
++                params={{ service: s.slug }}
++                onClick={() => track("cta_click", { cta: "home_freight_service", service: s.slug })}
++                className="group flex items-center justify-between gap-4 py-4"
++              >
++                <span className="min-w-0">
++                  <span className="block font-display text-lg font-semibold leading-tight group-hover:text-primary transition-colors">{s.name}</span>
++                  <span className="block mt-1.5 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">{s.kicker}</span>
++                </span>
++                <span aria-hidden className="shrink-0 text-primary opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all">→</span>
++              </Link>
++            </li>
++          ))}
++        </ul>
++      </div>
+     </section>
+   );
+ }
+@@ -444,9 +542,15 @@ function WhyLWD() {
+       <div className="container-x py-20 md:py-28">
+         <div className="max-w-3xl">
+           <div className="eyebrow">Why LWD Africa</div>
+-          <h2 className="mt-3 text-4xl md:text-6xl font-semibold leading-[0.95]">Not a shipping line. A private buying office.</h2>
++          {/* Reworded, not rewritten. The old line — "Not a shipping line" over
++              "Most exporters only move a car you already own" — argued the
++              sourcing case by denying the freight case, which the site now
++              sells two sections below and on /shipping/vehicle-shipping. The
++              argument is unchanged: sourcing is the harder service and is worth
++              paying for. It just no longer disowns the other one. */}
++          <h2 className="mt-3 text-4xl md:text-6xl font-semibold leading-[0.95]">More than a shipping line. A private buying office.</h2>
+           <p className="mt-6 text-muted-foreground max-w-2xl leading-relaxed">
+-            Most exporters only move a car you already own. We do the harder part — we find and buy the right vehicle for you, inspect it, and manage the entire journey to your door in West Africa. One team, one point of contact, one all-in price.
++            Plenty of exporters will move a car you already own, and so will we. Sourcing is the harder part — we find and buy the right vehicle for you, inspect it, and manage the entire journey to your door in West Africa. One team, one point of contact, one all-in price.
+           </p>
+         </div>
+         <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+diff --git a/src/routes/shipping.$service.tsx b/src/routes/shipping.$service.tsx
+new file mode 100644
+index 0000000..88d030c
+--- /dev/null
++++ b/src/routes/shipping.$service.tsx
+@@ -0,0 +1,358 @@
++import { createFileRoute, Link, notFound } from "@tanstack/react-router";
++import { useState } from "react";
++import { SiteNav, SiteFooter } from "@/components/site-nav";
++import { WhatsAppFab } from "@/components/whatsapp-fab";
++import { FreightQuoteDialog } from "@/components/freight-quote-dialog";
++import { ServicePhoto } from "@/components/service-photo";
++import { SERVICES, getService, type Service } from "@/lib/services";
++import { EMAIL, EMAIL_HREF, TEL_HREF, WA_DISPLAY, waLink, waTrackedProps, telTrackedProps, emailTrackedProps } from "@/lib/contact";
++import { track } from "@/lib/analytics";
++
++const BASE = "https://lwdcarsafrica.com";
++const SOCIAL_IMAGE =
++  "https://storage.googleapis.com/gpt-engineer-file-uploads/A4kmr2gMZSeny4vrN8kxaiJzVvY2/social-images/social-1784449781304-IMG_1085.webp";
++
++/**
++ * Lowercase a list item so it reads as prose mid-sentence, but leave acronyms
++ * and figures alone: "Make, model and year" becomes "make, model and year",
++ * while "RO-RO or container…" and "20ft, 40ft and…" are untouched.
++ */
++const lowerFirst = (t: string) => (/^[A-Z][a-z]/.test(t) ? t.charAt(0).toLowerCase() + t.slice(1) : t);
++
++const sentences = (t: string) => t.match(/[^.]+\./g)?.map((x) => x.trim()) ?? [t];
++
++/** "a, b, c" -> "a, b and c", so a list reads as a sentence rather than a table. */
++const commaAnd = (items: string[]) =>
++  items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
++
++/**
++ * The per-service question set.
++ *
++ * Every word of every answer comes from that service's own entry in
++ * `src/lib/services.ts` — the `needed`, `intro`, `includes`, `summary` and
++ * `typical` fields — recombined into prose, with only neutral connective
++ * wording added. Nothing here asserts anything the catalogue does not.
++ *
++ * It exists because ten service pages built from the same template read as
++ * near-duplicates to a search engine; this is the same answer the rest of the
++ * site already uses on /cars/$slug and /ship-to/$country. The visible block and
++ * the FAQPage structured data are generated from this one function so they can
++ * never drift apart.
++ */
++function serviceFaq(s: Service): { q: string; a: string }[] {
++  // Only the opening sentence of the intro is reused, so the page does not
++  // print the same paragraph twice; `summary` is copy that appears nowhere else
++  // on this page.
++  const openingSentence = sentences(s.intro)[0];
++  return [
++    {
++      q: `What do you need to quote ${s.name}?`,
++      a: `To quote it we need ${s.needed.map(lowerFirst).join("; ")}. Send what you have and we will tell you what else the movement needs.`,
++    },
++    {
++      q: `What does ${s.name} cover?`,
++      a: `${openingSentence} It covers ${s.includes.map(lowerFirst).join("; ")}.`,
++    },
++    {
++      q: `Is ${s.name} the right service for my cargo?`,
++      a: `${s.summary} Typically that means ${commaAnd(s.typical.map(lowerFirst))}.`,
++    },
++  ];
++}
++
++export const Route = createFileRoute("/shipping/$service")({
++  loader: ({ params }) => {
++    const service = getService(params.service);
++    if (!service) throw notFound();
++    return { service };
++  },
++  head: ({ loaderData }) => {
++    if (!loaderData) {
++      return {
++        meta: [
++          { title: "Service not found | LWD Africa" },
++          { name: "robots", content: "noindex" },
++        ],
++      };
++    }
++    const { service: s } = loaderData;
++    const url = `${BASE}/shipping/${s.slug}`;
++    const title = `${s.name} — Export Freight & Logistics | LWD Africa`;
++    const desc = `${s.summary} LWD Africa quotes any lane — tell us the cargo, where it is now and where it needs to go. WhatsApp +44 7568 765929.`;
++    const keywords = [
++      s.name,
++      `${s.name} quote`,
++      ...s.typical.map((t) => `${t} shipping`),
++      "export logistics",
++      "freight forwarding",
++      "LWD Africa",
++    ].join(", ");
++
++    return {
++      meta: [
++        { title },
++        { name: "description", content: desc },
++        { name: "keywords", content: keywords },
++        { property: "og:title", content: title },
++        { property: "og:description", content: desc },
++        { property: "og:type", content: "website" },
++        { property: "og:url", content: url },
++        { property: "og:site_name", content: "LWD Africa" },
++        { property: "og:locale", content: "en_GB" },
++        { property: "og:image", content: SOCIAL_IMAGE },
++        { property: "og:image:secure_url", content: SOCIAL_IMAGE },
++        { property: "og:image:width", content: "1200" },
++        { property: "og:image:height", content: "630" },
++        { property: "og:image:alt", content: "LWD Africa — export freight and logistics" },
++        { name: "twitter:card", content: "summary_large_image" },
++        { name: "twitter:title", content: title },
++        { name: "twitter:description", content: desc },
++        { name: "twitter:image", content: SOCIAL_IMAGE },
++        { name: "twitter:image:alt", content: "LWD Africa — export freight and logistics" },
++        { name: "robots", content: "index,follow,max-image-preview:large,max-snippet:-1" },
++      ],
++      links: [{ rel: "canonical", href: url }],
++      scripts: [
++        {
++          type: "application/ld+json",
++          children: JSON.stringify({
++            "@context": "https://schema.org",
++            "@type": "Service",
++            "@id": `${url}#service`,
++            name: s.name,
++            serviceType: s.name,
++            description: `${s.summary} ${s.intro}`,
++            url,
++            // The site-wide Organization node in __root.tsx carries this @id and
++            // ships on every page, so the reference resolves in the same
++            // document it appears in.
++            provider: { "@id": `${BASE}/#organization` },
++            areaServed: { "@type": "Place", name: "Worldwide" },
++          }),
++        },
++        {
++          type: "application/ld+json",
++          children: JSON.stringify({
++            "@context": "https://schema.org",
++            "@type": "FAQPage",
++            "@id": `${url}#faq`,
++            mainEntity: serviceFaq(s).map((f) => ({
++              "@type": "Question",
++              name: f.q,
++              acceptedAnswer: { "@type": "Answer", text: f.a },
++            })),
++          }),
++        },
++        {
++          type: "application/ld+json",
++          children: JSON.stringify({
++            "@context": "https://schema.org",
++            "@type": "BreadcrumbList",
++            itemListElement: [
++              { "@type": "ListItem", position: 1, name: "Home", item: `${BASE}/` },
++              { "@type": "ListItem", position: 2, name: "Freight & logistics", item: `${BASE}/shipping` },
++              { "@type": "ListItem", position: 3, name: s.name, item: url },
++            ],
++          }),
++        },
++      ],
++    };
++  },
++  component: ServicePage,
++  notFoundComponent: () => (
++    <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
++      <div className="text-center px-5">
++        <h1 className="text-3xl font-semibold mb-3">Service not found</h1>
++        <Link to="/shipping" className="btn-outline inline-flex">Back to freight services</Link>
++      </div>
++    </div>
++  ),
++});
++
++function ServicePage() {
++  const { service } = Route.useLoaderData();
++  const [quoteOpen, setQuoteOpen] = useState(false);
++  const faq = serviceFaq(service);
++
++  // Four onward services rather than the other nine. Listing every service on
++  // every service page put the same ~200 words of kickers, names and summaries
++  // on all ten, which is most of what made them read as variants of one page.
++  // The offsets are spread so that neighbouring services do not show the same
++  // four, and the hub link below still reaches the whole catalogue.
++  const here = SERVICES.findIndex((s) => s.slug === service.slug);
++  const others = [1, 3, 5, 7].map((step) => SERVICES[(here + step) % SERVICES.length]);
++
++  const openQuote = (cta: string) => {
++    setQuoteOpen(true);
++    track("cta_click", { cta, service: service.slug });
++  };
++
++  const wa = waLink(
++    `Hi LWD Africa, I'd like a freight quote.\nService: ${service.name}\nMy cargo is ___, going from ___ to ___.`,
++  );
++
++  return (
++    <div>
++      <SiteNav />
++
++      <div className="container-x pt-6 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
++        <Link to="/" className="hover:text-foreground">Home</Link>
++        <span className="mx-2 opacity-40">/</span>
++        <Link to="/shipping" className="hover:text-foreground">Freight</Link>
++        <span className="mx-2 opacity-40">/</span>
++        <span className="text-foreground">{service.name}</span>
++      </div>
++
++      <section className="container-x py-8 md:py-12 grid gap-8 lg:grid-cols-[1.1fr_1fr] items-start">
++        <ServicePhoto service={service} sizes="(min-width: 1024px) 620px, 92vw" />
++
++        <div>
++          <div className="eyebrow">{service.kicker}</div>
++          <h1 className="mt-3 font-display text-4xl md:text-5xl font-semibold leading-[1.02]">
++            {service.name}
++          </h1>
++          <p className="mt-5 text-base leading-relaxed text-muted-foreground">{service.intro}</p>
++
++          <div className="mt-8 grid sm:grid-cols-2 gap-3">
++            <button type="button" onClick={() => openQuote("service_hero_quote")} className="btn-gold w-full">
++              Get a quote
++            </button>
++            <a href={wa} {...waTrackedProps("service_page")} className="btn-outline w-full">
++              WhatsApp us
++            </a>
++          </div>
++
++          <div className="mt-4 text-xs text-muted-foreground">
++            Or call{" "}
++            <a href={TEL_HREF} {...telTrackedProps("service_page")} className="underline hover:text-foreground transition-colors">{WA_DISPLAY}</a>
++            {" "}·{" "}
++            <a href={EMAIL_HREF} {...emailTrackedProps("service_page")} className="underline hover:text-foreground transition-colors">{EMAIL}</a>
++          </div>
++        </div>
++      </section>
++
++      <section className="container-x py-12 border-t border-border grid gap-10 lg:grid-cols-2">
++        <div>
++          <div className="eyebrow">What it includes</div>
++          <ul className="mt-6 space-y-3">
++            {service.includes.map((i) => (
++              <li key={i} className="flex gap-3 text-sm leading-relaxed">
++                <span aria-hidden className="text-primary mt-px">✓</span>
++                <span className="text-muted-foreground">{i}</span>
++              </li>
++            ))}
++          </ul>
++        </div>
++
++        <div className="dealer-panel p-6 md:p-8 rounded-xl">
++          <div className="eyebrow">What we need to quote</div>
++          <ol className="mt-6 space-y-4">
++            {service.needed.map((n, i) => (
++              <li key={n} className="flex gap-4 text-sm leading-relaxed">
++                <span className="text-[10px] uppercase tracking-[0.24em] text-primary pt-1">0{i + 1}</span>
++                <span className="text-muted-foreground">{n}</span>
++              </li>
++            ))}
++          </ol>
++          <button
++            type="button"
++            onClick={() => openQuote("service_needed_quote")}
++            className="btn-ghost mt-8 w-full"
++          >
++            Answer these now
++          </button>
++        </div>
++      </section>
++
++      <section className="container-x py-12 border-t border-border">
++        <div className="eyebrow">Typical cargo</div>
++        <h2 className="mt-3 text-3xl md:text-4xl font-semibold max-w-2xl">Is this you?</h2>
++        <div className="mt-6 flex flex-wrap gap-2">
++          {service.typical.map((t) => (
++            <span
++              key={t}
++              className="text-xs uppercase tracking-[0.18em] px-3 py-2 border border-border text-muted-foreground"
++            >
++              {t}
++            </span>
++          ))}
++        </div>
++        <p className="mt-6 text-sm text-muted-foreground max-w-2xl leading-relaxed">
++          If your cargo is not on that list it does not mean we cannot move it — tell us what it is and we will say which of the services fits.
++        </p>
++      </section>
++
++      <section className="container-x py-12 border-t border-border grid gap-10 lg:grid-cols-[1fr_1.5fr]">
++        <div>
++          <div className="eyebrow">Questions, answered</div>
++          <h2 className="mt-3 text-3xl md:text-4xl font-semibold leading-tight">
++            Before you send the message.
++          </h2>
++        </div>
++        <dl className="dealer-panel rounded-xl divide-y divide-border">
++          {faq.map((f) => (
++            <div key={f.q} className="p-5 md:p-6">
++              <dt className="font-display text-lg md:text-xl font-semibold leading-tight">{f.q}</dt>
++              <dd className="mt-3 text-sm md:text-base text-muted-foreground leading-relaxed">{f.a}</dd>
++            </div>
++          ))}
++        </dl>
++      </section>
++
++      <section className="border-t border-border bg-[color:var(--surface)]">
++        <div className="container-x py-16 md:py-20 grid gap-8 lg:grid-cols-[1.3fr_1fr] lg:items-center">
++          <div>
++            <div className="eyebrow">Get a quote</div>
++            <h2 className="mt-3 text-3xl md:text-4xl font-semibold max-w-xl">
++              Five short answers and we can take it from there.
++            </h2>
++            <p className="mt-5 text-muted-foreground max-w-xl leading-relaxed">
++              No form and nothing to submit. We build a WhatsApp message from your answers — this service is already named in it — and you read the whole thing before it sends.
++            </p>
++          </div>
++          <div className="flex flex-wrap gap-3 lg:justify-end">
++            <button type="button" onClick={() => openQuote("service_closing_quote")} className="btn-gold">
++              Start a quote
++            </button>
++            <a href={wa} {...waTrackedProps("service_page")} className="btn-outline">
++              WhatsApp us
++            </a>
++          </div>
++        </div>
++      </section>
++
++      <section className="container-x py-16">
++        <div className="eyebrow">The rest of the chain</div>
++        <h2 className="mt-3 text-3xl md:text-4xl font-semibold">Other services</h2>
++        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
++          {others.map((o) => (
++            <Link
++              key={o.slug}
++              to="/shipping/$service"
++              params={{ service: o.slug }}
++              className="group p-5 dealer-panel card-hover flex flex-col"
++            >
++              <div className="text-primary font-sans text-[10px] tracking-[0.24em] uppercase">{o.kicker}</div>
++              <h3 className="mt-3 font-display text-xl font-semibold leading-tight group-hover:text-primary transition-colors">
++                {o.name}
++              </h3>
++              <p className="mt-2 text-sm text-muted-foreground leading-relaxed flex-1">{o.summary}</p>
++            </Link>
++          ))}
++        </div>
++        <div className="mt-8">
++          <Link to="/shipping" className="btn-ghost">All freight services</Link>
++        </div>
++      </section>
++
++      <SiteFooter />
++      <WhatsAppFab />
++      <FreightQuoteDialog
++        open={quoteOpen}
++        onClose={() => setQuoteOpen(false)}
++        service={service}
++        source={`service_${service.slug}`}
++      />
++    </div>
++  );
++}
+diff --git a/src/routes/shipping_.tsx b/src/routes/shipping_.tsx
+new file mode 100644
+index 0000000..a8e9b6b
+--- /dev/null
++++ b/src/routes/shipping_.tsx
+@@ -0,0 +1,390 @@
++import { createFileRoute, Link } from "@tanstack/react-router";
++import { useState } from "react";
++import { SiteNav, SiteFooter } from "@/components/site-nav";
++import { WhatsAppFab } from "@/components/whatsapp-fab";
++import { FreightQuoteDialog } from "@/components/freight-quote-dialog";
++import { SERVICES, ORIGIN_REGIONS, DESTINATION_REGIONS } from "@/lib/services";
++import { EMAIL, EMAIL_HREF, TEL_HREF, WA_DISPLAY, waLink, waTrackedProps, telTrackedProps, emailTrackedProps } from "@/lib/contact";
++import { track } from "@/lib/analytics";
++
++const BASE = "https://lwdcarsafrica.com";
++const URL = `${BASE}/shipping`;
++const SOCIAL_IMAGE =
++  "https://storage.googleapis.com/gpt-engineer-file-uploads/A4kmr2gMZSeny4vrN8kxaiJzVvY2/social-images/social-1784449781304-IMG_1085.webp";
++
++const TITLE = "Export Freight & Logistics — Any Cargo, Any Route | LWD Africa";
++const DESC =
++  "LWD Africa moves cargo of every kind: container freight (FCL and LCL), RO-RO, breakbulk and project cargo, plant and machinery, personal effects and removals, customs clearance, inland haulage, cargo insurance and warehousing — plus shipping a vehicle you already own from A to B. Tell us the cargo, the origin and the destination and we quote the lane. WhatsApp +44 7568 765929.";
++
++export const Route = createFileRoute("/shipping_")({
++  component: ShippingHub,
++  head: () => ({
++    meta: [
++      { title: TITLE },
++      { name: "description", content: DESC },
++      {
++        name: "keywords",
++        content:
++          "export logistics, freight forwarding, container shipping, FCL, LCL, RO-RO shipping, breakbulk, project cargo, plant and machinery shipping, personal effects shipping, removals, customs clearance, inland haulage, cargo insurance, warehousing, consolidation, ship my car, vehicle shipping A to B, LWD Africa freight",
++      },
++      { property: "og:title", content: TITLE },
++      { property: "og:description", content: DESC },
++      { property: "og:type", content: "website" },
++      { property: "og:url", content: URL },
++      { property: "og:site_name", content: "LWD Africa" },
++      { property: "og:locale", content: "en_GB" },
++      { property: "og:image", content: SOCIAL_IMAGE },
++      { property: "og:image:secure_url", content: SOCIAL_IMAGE },
++      { property: "og:image:width", content: "1200" },
++      { property: "og:image:height", content: "630" },
++      { property: "og:image:alt", content: "LWD Africa — export freight and logistics" },
++      { name: "twitter:card", content: "summary_large_image" },
++      { name: "twitter:title", content: TITLE },
++      { name: "twitter:description", content: DESC },
++      { name: "twitter:image", content: SOCIAL_IMAGE },
++      { name: "twitter:image:alt", content: "LWD Africa — export freight and logistics" },
++      { name: "robots", content: "index,follow,max-image-preview:large,max-snippet:-1" },
++    ],
++    links: [{ rel: "canonical", href: URL }],
++    scripts: [
++      {
++        type: "application/ld+json",
++        children: JSON.stringify({
++          "@context": "https://schema.org",
++          "@type": "Service",
++          "@id": `${URL}#service`,
++          serviceType: "Freight forwarding and export logistics",
++          name: "Export freight and logistics",
++          description: DESC,
++          url: URL,
++          // The site-wide Organization node in __root.tsx carries this @id and
++          // ships on every page, so the reference resolves in the same document.
++          provider: { "@id": `${BASE}/#organization` },
++          areaServed: { "@type": "Place", name: "Worldwide" },
++          hasOfferCatalog: {
++            "@type": "OfferCatalog",
++            name: "Freight and logistics services",
++            itemListElement: SERVICES.map((s) => ({
++              "@type": "Offer",
++              itemOffered: {
++                "@type": "Service",
++                name: s.name,
++                description: s.summary,
++                url: `${URL}/${s.slug}`,
++              },
++            })),
++          },
++        }),
++      },
++      {
++        type: "application/ld+json",
++        children: JSON.stringify({
++          "@context": "https://schema.org",
++          "@type": "ItemList",
++          name: "LWD Africa freight and logistics services",
++          numberOfItems: SERVICES.length,
++          itemListElement: SERVICES.map((s, i) => ({
++            "@type": "ListItem",
++            position: i + 1,
++            name: s.name,
++            item: {
++              "@type": "Service",
++              name: s.name,
++              description: s.summary,
++              url: `${URL}/${s.slug}`,
++            },
++          })),
++        }),
++      },
++      {
++        type: "application/ld+json",
++        children: JSON.stringify({
++          "@context": "https://schema.org",
++          "@type": "BreadcrumbList",
++          itemListElement: [
++            { "@type": "ListItem", position: 1, name: "Home", item: `${BASE}/` },
++            { "@type": "ListItem", position: 2, name: "Freight & logistics", item: URL },
++          ],
++        }),
++      },
++    ],
++  }),
++});
++
++const SCOPE = [
++  {
++    k: "Any cargo",
++    v: "Vehicles, containers, plant and machinery, oversized pieces and household effects.",
++  },
++  {
++    k: "Any lane",
++    v: "Origin and destination quoted together, including landlocked destinations.",
++  },
++  {
++    k: "The whole chain",
++    v: "Collection, documentation, sea freight, customs at both ends and final delivery.",
++  },
++];
++
++const STEPS = [
++  {
++    t: "Tell us what and where",
++    d: "The cargo, where it is now, where it needs to go and roughly when it is ready. Photographs and dimensions help.",
++  },
++  {
++    t: "We quote the lane",
++    d: "We come back with the mode that suits the cargo — container, RO-RO or breakbulk — and what the movement costs, with insurance priced separately.",
++  },
++  {
++    t: "Documents and loading",
++    d: "Export declarations and the bill of lading prepared at origin, then loading, securing and lashing before it sails.",
++  },
++  {
++    t: "Clearance and delivery",
++    d: "Import entries and destination formalities, then inland haulage to the final address.",
++  },
++];
++
++function ShippingHub() {
++  const [quoteOpen, setQuoteOpen] = useState(false);
++  const [lane, setLane] = useState<{ origin?: string; destination?: string }>({});
++
++  const openQuote = (
++    source: string,
++    seed: { origin?: string; destination?: string } = {},
++  ) => {
++    setLane(seed);
++    setQuoteOpen(true);
++    track("cta_click", { cta: source });
++  };
++
++  return (
++    <div>
++      <SiteNav />
++
++      <section className="relative border-b border-border overflow-hidden">
++        <div
++          className="absolute inset-0 opacity-[0.08] pointer-events-none"
++          style={{ background: "linear-gradient(115deg, var(--gold), transparent 38%)" }}
++        />
++        <div className="container-x py-16 md:py-28 relative">
++          <div className="eyebrow">Freight and logistics</div>
++          <h1 className="mt-4 text-5xl md:text-7xl font-semibold max-w-4xl leading-[0.9]">
++            Export logistics for any cargo, on any lane.
++          </h1>
++          <p className="mt-6 text-muted-foreground max-w-2xl text-lg leading-relaxed">
++            LWD Africa moves more than cars. Tell us what the cargo is, where it is now and where it needs to be, and we quote the movement end to end — collection, export documentation, sea freight, customs at both ends and delivery to the final address.
++          </p>
++          <div className="mt-8 flex flex-wrap gap-3">
++            <button type="button" onClick={() => openQuote("shipping_hero_quote")} className="btn-gold">
++              Get a freight quote
++            </button>
++            <a
++              href={waLink("Hi LWD Africa, I'd like a freight quote. My cargo is ___, going from ___ to ___.")}
++              {...waTrackedProps("shipping_hub")}
++              className="btn-outline"
++            >
++              WhatsApp us
++            </a>
++          </div>
++        </div>
++      </section>
++
++      <section className="border-b border-border bg-[color:var(--surface)]">
++        <div className="container-x grid md:grid-cols-3 md:divide-x md:divide-border">
++          {SCOPE.map((s) => (
++            <div key={s.k} className="py-7 md:py-8 md:px-6 md:first:pl-0 md:last:pr-0">
++              <div className="text-[10px] uppercase tracking-[0.22em] text-primary">{s.k}</div>
++              <p className="mt-2.5 text-sm text-muted-foreground leading-relaxed max-w-sm">{s.v}</p>
++            </div>
++          ))}
++        </div>
++      </section>
++
++      <section className="container-x py-20 md:py-28">
++        <div className="max-w-3xl">
++          <div className="eyebrow">What we move</div>
++          <h2 className="mt-3 text-4xl md:text-6xl font-semibold leading-[0.95]">
++            Ten services, one movement.
++          </h2>
++          <p className="mt-6 text-muted-foreground max-w-2xl leading-relaxed">
++            Pick the one closest to your cargo and we will tell you which of the others it needs, and what the rest of the chain looks like.
++          </p>
++        </div>
++
++        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
++          {SERVICES.map((s) => (
++            <Link
++              key={s.slug}
++              to="/shipping/$service"
++              params={{ service: s.slug }}
++              className="group p-6 dealer-panel card-hover flex flex-col"
++            >
++              <div className="text-primary font-sans text-[10px] tracking-[0.24em] uppercase">{s.kicker}</div>
++              <h3 className="mt-4 font-display text-2xl font-semibold leading-tight group-hover:text-primary transition-colors">
++                {s.name}
++              </h3>
++              <p className="mt-3 text-sm text-muted-foreground leading-relaxed flex-1">{s.summary}</p>
++              <div className="mt-5 text-[11px] uppercase tracking-[0.2em] text-muted-foreground group-hover:text-primary transition-colors">
++                View service <span aria-hidden className="inline-block group-hover:translate-x-1 transition-transform">→</span>
++              </div>
++            </Link>
++          ))}
++        </div>
++      </section>
++
++      <section className="border-t border-border">
++        <div className="container-x py-20 md:py-28">
++          <div className="eyebrow">How it works</div>
++          <h2 className="mt-3 text-3xl md:text-5xl font-semibold max-w-2xl">
++            Four steps from the first message to the final address.
++          </h2>
++          <ol className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
++            {STEPS.map((s, i) => (
++              <li key={s.t} className="p-6 rounded-xl border border-border relative">
++                <div className="text-6xl font-display font-semibold text-primary/20 leading-none">0{i + 1}</div>
++                <div className="mt-2 font-semibold">{s.t}</div>
++                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{s.d}</p>
++              </li>
++            ))}
++          </ol>
++        </div>
++      </section>
++
++      <section className="border-t border-border bg-[color:var(--surface)]">
++        <div className="container-x py-20 md:py-28">
++          <div className="max-w-3xl">
++            <div className="eyebrow">Lanes</div>
++            <h2 className="mt-3 text-3xl md:text-5xl font-semibold">We quote any lane.</h2>
++            <p className="mt-5 text-muted-foreground max-w-2xl leading-relaxed">
++              The regions below are shortcuts, not limits. "Anywhere else" is a first class answer on both sides — tell us the two addresses and we will quote the movement between them. Tap a region to start a quote with it filled in.
++            </p>
++          </div>
++
++          <div className="mt-12 grid gap-10 lg:grid-cols-2">
++            <div>
++              <div className="text-[10px] uppercase tracking-[0.22em] text-primary">Collecting from</div>
++              <div className="mt-4 flex flex-wrap gap-2">
++                {ORIGIN_REGIONS.map((o) => (
++                  <button
++                    key={o}
++                    type="button"
++                    onClick={() => openQuote("shipping_lane_origin", { origin: o })}
++                    className="inline-flex items-center justify-center min-h-11 md:min-h-0 px-3.5 py-2 border border-border text-xs uppercase tracking-[0.18em] text-muted-foreground hover:text-primary hover:border-primary transition-colors"
++                  >
++                    {o}
++                  </button>
++                ))}
++              </div>
++            </div>
++            <div>
++              <div className="text-[10px] uppercase tracking-[0.22em] text-primary">Delivering to</div>
++              <div className="mt-4 flex flex-wrap gap-2">
++                {DESTINATION_REGIONS.map((d) => (
++                  <button
++                    key={d}
++                    type="button"
++                    onClick={() => openQuote("shipping_lane_destination", { destination: d })}
++                    className="inline-flex items-center justify-center min-h-11 md:min-h-0 px-3.5 py-2 border border-border text-xs uppercase tracking-[0.18em] text-muted-foreground hover:text-primary hover:border-primary transition-colors"
++                  >
++                    {d}
++                  </button>
++                ))}
++              </div>
++            </div>
++          </div>
++        </div>
++      </section>
++
++      <section className="border-t border-border">
++        <div className="container-x py-16 md:py-20 grid gap-8 lg:grid-cols-[1.3fr_1fr] lg:items-center">
++          <div>
++            <div className="eyebrow">Looking for a car?</div>
++            <h2 className="mt-3 text-3xl md:text-4xl font-semibold">The sourcing business is unchanged.</h2>
++            <p className="mt-5 text-muted-foreground max-w-xl leading-relaxed">
++              LWD Africa still sources vehicles in the UK, Europe and Asia and ships them into West Africa, with the vehicle directory and the country pages exactly where they were. Freight sits alongside it — if you already own the vehicle, that is the vehicle shipping service.
++            </p>
++          </div>
++          <div className="flex flex-wrap gap-3 lg:justify-end">
++            <Link to="/cars" className="btn-outline">Browse vehicles</Link>
++            <Link to="/shipping/$service" params={{ service: "vehicle-shipping" }} className="btn-ghost">
++              Ship a car you own
++            </Link>
++          </div>
++        </div>
++      </section>
++
++      <section className="border-t border-border">
++        <div className="container-x py-20 md:py-28 grid gap-10 lg:grid-cols-2 items-start">
++          <div>
++            <div className="eyebrow">Get a quote</div>
++            <h2 className="mt-3 text-3xl md:text-5xl font-semibold">Send us the cargo and the two ends.</h2>
++            <p className="mt-5 text-muted-foreground max-w-md leading-relaxed">
++              There is no form to fill in and nothing to submit. Answer five short questions and we turn them into a WhatsApp message you can read before it sends — or call the London desk and talk it through.
++            </p>
++            <dl className="mt-8 grid gap-4 sm:grid-cols-2 text-sm">
++              <div>
++                <dt className="text-primary uppercase text-xs tracking-wider">WhatsApp</dt>
++                <dd className="mt-1">
++                  <a
++                    href={waLink("Hi LWD Africa, I'd like a freight quote. My cargo is ___, going from ___ to ___.")}
++                    {...waTrackedProps("shipping_hub")}
++                    className="hover:text-primary transition-colors"
++                  >{WA_DISPLAY}</a>
++                </dd>
++              </div>
++              <div>
++                <dt className="text-primary uppercase text-xs tracking-wider">Phone</dt>
++                <dd className="mt-1">
++                  <a href={TEL_HREF} {...telTrackedProps("shipping_hub")} className="hover:text-primary transition-colors">{WA_DISPLAY}</a>
++                </dd>
++              </div>
++              <div className="sm:col-span-2">
++                <dt className="text-primary uppercase text-xs tracking-wider">Email</dt>
++                <dd className="mt-1">
++                  <a href={EMAIL_HREF} {...emailTrackedProps("shipping_hub")} className="hover:text-primary transition-colors">{EMAIL}</a>
++                </dd>
++              </div>
++            </dl>
++          </div>
++
++          <aside className="relative dealer-panel p-8 md:p-10 rounded-2xl overflow-hidden">
++            <div
++              className="absolute inset-0 opacity-[0.07] pointer-events-none"
++              style={{ background: "radial-gradient(70% 90% at 100% 0%, var(--gold), transparent)" }}
++            />
++            <div className="relative">
++              <div className="eyebrow">Freight quote</div>
++              <div className="mt-4 font-display text-4xl md:text-5xl font-semibold leading-[1.05]">
++                Five questions.
++              </div>
++              <p className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-sm">
++                What the cargo is, where it is now, where it is going, a line of description and roughly when it is ready. That is enough for us to come back to you.
++              </p>
++              <div className="mt-8 grid gap-3">
++                <button
++                  type="button"
++                  onClick={() => openQuote("shipping_closing_quote")}
++                  className="btn-gold w-full !py-4"
++                >
++                  Start a freight quote
++                </button>
++                <a href={TEL_HREF} {...telTrackedProps("shipping_hub")} className="btn-outline w-full !py-4">Call {WA_DISPLAY}</a>
++              </div>
++            </div>
++          </aside>
++        </div>
++      </section>
++
++      <SiteFooter />
++      <WhatsAppFab />
++      <FreightQuoteDialog
++        open={quoteOpen}
++        onClose={() => setQuoteOpen(false)}
++        initialOrigin={lane.origin}
++        initialDestination={lane.destination}
++        source="shipping_hub"
++      />
++    </div>
++  );
++}
+diff --git a/src/routes/sitemap[.]xml.ts b/src/routes/sitemap[.]xml.ts
+index c84759b..5811179 100644
+--- a/src/routes/sitemap[.]xml.ts
++++ b/src/routes/sitemap[.]xml.ts
+@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
+ import type {} from "@tanstack/react-start";
+ import { COUNTRIES } from "@/lib/countries";
+ import { CARS } from "@/lib/data";
++import { SERVICES } from "@/lib/services";
+ 
+ const BASE_URL = "https://lwdcarsafrica.com";
+ 
+@@ -9,10 +10,22 @@ export const Route = createFileRoute("/sitemap.xml")({
+   server: {
+     handlers: {
+       GET: async () => {
++        // Two primary landing pages sit directly under the home page: /cars, the
++        // vehicle directory the site already ranks for, and /shipping, the hub
++        // for the wider freight business. They share priority 0.9 deliberately;
++        // neither is subordinate to the other.
++        //
++        // Service pages are generated from SERVICES so a service added to the
++        // catalogue is in the sitemap the moment its page exists, and one removed
++        // cannot leave a 404 behind in here.
+         const entries: { path: string; changefreq: string; priority: string }[] = [
+           { path: "/", changefreq: "weekly", priority: "1.0" },
+           { path: "/cars", changefreq: "weekly", priority: "0.9" },
++          { path: "/shipping", changefreq: "weekly", priority: "0.9" },
++          // Destination and service pages are the two conversion tiers, so both
++          // sit at 0.8, above individual vehicle pages.
+           ...COUNTRIES.map((c) => ({ path: `/ship-to/${c.slug}`, changefreq: "weekly", priority: "0.8" })),
++          ...SERVICES.map((s) => ({ path: `/shipping/${s.slug}`, changefreq: "monthly", priority: "0.8" })),
+           ...CARS.map((c) => ({ path: `/cars/${c.slug}`, changefreq: "weekly", priority: "0.7" })),
+           { path: "/privacy", changefreq: "yearly", priority: "0.3" },
+           { path: "/terms", changefreq: "yearly", priority: "0.3" },
+diff --git a/src/styles.css b/src/styles.css
+index 9add313..b61a64b 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -154,6 +154,9 @@
+ @utility btn-gold {
+   &:hover { transform: translateY(-2px); filter: brightness(1.05); }
+   &:active { transform: translateY(0); }
++  /* The padding lands these at 40px, 4px under the 44px touch target. Raised on
++     phones only, where it is a thumb: pointer sizes are unchanged. */
++  @media (max-width: 767px) { min-height: 2.75rem; }
+ }
+ 
+ @utility btn-outline {
+@@ -176,6 +179,7 @@
+ }
+ @utility btn-outline {
+   &:hover { background: var(--color-surface); border-color: var(--color-gold); transform: translateY(-1px); }
++  @media (max-width: 767px) { min-height: 2.75rem; }
+ }
+ 
+ @utility btn-ghost {
+@@ -197,6 +201,7 @@
+ }
+ @utility btn-ghost {
+   &:hover { border-color: var(--color-gold); color: var(--color-gold); }
++  @media (max-width: 767px) { min-height: 2.75rem; }
+ }
+ 
+ @utility eyebrow {
