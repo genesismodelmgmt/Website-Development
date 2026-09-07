@@ -1,0 +1,551 @@
+diff --git a/src/components/cookie-consent.tsx b/src/components/cookie-consent.tsx
+index 087a23d..d8ab117 100644
+--- a/src/components/cookie-consent.tsx
++++ b/src/components/cookie-consent.tsx
+@@ -47,7 +47,10 @@ export function CookieConsent() {
+ 
+   useEffect(() => {
+     if (visible) {
+-      const t = setTimeout(() => acceptRef.current?.focus(), 40);
++      // preventScroll is essential: without it the browser scrolls the banner
++      // into view, and because html has scroll-behavior:smooth that animates
++      // the whole document to the bottom on every first visit.
++      const t = setTimeout(() => acceptRef.current?.focus({ preventScroll: true }), 40);
+       return () => clearTimeout(t);
+     }
+   }, [visible]);
+@@ -74,25 +77,30 @@ export function CookieConsent() {
+       aria-describedby="lwd-cookie-desc"
+       className="fixed inset-x-3 bottom-3 md:inset-x-auto md:right-6 md:bottom-6 md:max-w-md z-[70] rounded-sm border border-border bg-card/95 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.5)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4"
+     >
+-      <div className="p-5 md:p-6">
++      {/* Under 360px the description wraps to three lines and the two buttons
++          stack, making the banner 255px tall, which puts its top edge across
++          the bottom of the hero's WhatsApp Quote button. The spacing is tightened
++          below 360px only, so the banner clears that CTA; 360px and up is
++          untouched. */}
++      <div className="p-5 max-[359px]:p-4 md:p-6">
+         <div className="text-[10px] uppercase tracking-[0.32em] text-primary font-semibold" id="lwd-cookie-title">Cookies</div>
+-        <p id="lwd-cookie-desc" className="mt-3 text-sm text-muted-foreground leading-relaxed">
++        <p id="lwd-cookie-desc" className="mt-3 max-[359px]:mt-2 text-sm text-muted-foreground leading-relaxed">
+           We use privacy-friendly analytics cookies to improve this site. You choose.{" "}
+           <Link to="/cookies" className="text-primary hover:underline">Learn more</Link>.
+         </p>
+-        <div className="mt-5 flex flex-wrap gap-2">
++        <div className="mt-5 max-[359px]:mt-4 flex flex-wrap gap-2">
+           <button
+             ref={acceptRef}
+             type="button"
+             onClick={() => decide("accepted")}
+-            className="btn-gold !py-2.5 !px-4 text-sm"
++            className="btn-gold !py-3 !px-4 text-sm"
+           >
+             Accept analytics
+           </button>
+           <button
+             type="button"
+             onClick={() => decide("rejected")}
+-            className="btn-outline !py-2.5 !px-4 text-sm"
++            className="btn-outline !py-3 !px-4 text-sm"
+           >
+             Reject
+           </button>
+diff --git a/src/components/inquiry-dialog.tsx b/src/components/inquiry-dialog.tsx
+index e738e6f..6acd50c 100644
+--- a/src/components/inquiry-dialog.tsx
++++ b/src/components/inquiry-dialog.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useMemo, useState } from "react";
++import { useEffect, useMemo, useRef, useState } from "react";
+ import * as DialogPrimitive from "@radix-ui/react-dialog";
+ import { Link } from "@tanstack/react-router";
+ import type { Car } from "@/lib/data";
+@@ -22,6 +22,19 @@ const DESTINATIONS = [
+ export function InquiryDialog({ car, onClose }: Props) {
+   const [country, setCountry] = useState<string>("Sierra Leone");
+   const [imgIdx, setImgIdx] = useState(0);
++  // The dialog is opened from page state, not a Radix Trigger, so Radix has no
++  // element to hand focus back to and it falls to <body>. Remember the last
++  // element focused outside any dialog and return focus there on close.
++  const openerRef = useRef<HTMLElement | null>(null);
++
++  useEffect(() => {
++    const onFocusIn = (e: FocusEvent) => {
++      const t = e.target;
++      if (t instanceof HTMLElement && !t.closest("[role=dialog]")) openerRef.current = t;
++    };
++    document.addEventListener("focusin", onFocusIn);
++    return () => document.removeEventListener("focusin", onFocusIn);
++  }, []);
+ 
+   const gallery = useMemo(() => {
+     if (!car) return [] as string[];
+@@ -47,10 +60,17 @@ export function InquiryDialog({ car, onClose }: Props) {
+   return (
+     <DialogPrimitive.Root open={!!car} onOpenChange={(o) => { if (!o) onClose(); }}>
+       <DialogPrimitive.Portal>
+-        <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-background/85 backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
++        <DialogPrimitive.Overlay className="fixed inset-0 z-[80] bg-background/85 backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+         <DialogPrimitive.Content
+           aria-labelledby={titleId}
+-          className="fixed left-1/2 top-1/2 z-[61] w-[calc(100%-1.5rem)] sm:w-full max-w-2xl max-h-[92vh] -translate-x-1/2 -translate-y-1/2 overflow-hidden bg-card border border-border rounded-2xl shadow-2xl flex flex-col focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
++          onCloseAutoFocus={(e) => {
++            const opener = openerRef.current;
++            if (opener && document.contains(opener)) {
++              e.preventDefault();
++              opener.focus({ preventScroll: true });
++            }
++          }}
++          className="fixed left-1/2 top-1/2 z-[81] w-[calc(100%-1.5rem)] sm:w-[calc(100%-3rem)] max-w-2xl max-h-[92dvh] -translate-x-1/2 -translate-y-1/2 overflow-hidden bg-card border border-border rounded-2xl shadow-2xl flex flex-col focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+         >
+           <div className="relative aspect-[16/9] bg-[color:var(--surface)] overflow-hidden shrink-0">
+             {(() => {
+diff --git a/src/components/ship-dialog.tsx b/src/components/ship-dialog.tsx
+index 73c856e..6322048 100644
+--- a/src/components/ship-dialog.tsx
++++ b/src/components/ship-dialog.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useMemo, useState } from "react";
++import { useEffect, useMemo, useRef, useState } from "react";
+ import * as DialogPrimitive from "@radix-ui/react-dialog";
+ import { Link } from "@tanstack/react-router";
+ import { CARS, BRANDS, type Car } from "@/lib/data";
+@@ -14,6 +14,18 @@ interface Props {
+ export function ShipDialog({ country, onClose }: Props) {
+   const [q, setQ] = useState("");
+   const [brand, setBrand] = useState<string>("");
++  // Opened from page state rather than a Radix Trigger, so focus has nowhere to
++  // return to on close. Remember the last element focused outside any dialog.
++  const openerRef = useRef<HTMLElement | null>(null);
++
++  useEffect(() => {
++    const onFocusIn = (e: FocusEvent) => {
++      const t = e.target;
++      if (t instanceof HTMLElement && !t.closest("[role=dialog]")) openerRef.current = t;
++    };
++    document.addEventListener("focusin", onFocusIn);
++    return () => document.removeEventListener("focusin", onFocusIn);
++  }, []);
+ 
+   useEffect(() => {
+     if (!country) return;
+@@ -46,10 +58,17 @@ export function ShipDialog({ country, onClose }: Props) {
+   return (
+     <DialogPrimitive.Root open={!!country} onOpenChange={(o) => { if (!o) onClose(); }}>
+       <DialogPrimitive.Portal>
+-        <DialogPrimitive.Overlay className="fixed inset-0 z-[70] bg-background/85 backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
++        <DialogPrimitive.Overlay className="fixed inset-0 z-[80] bg-background/85 backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+         <DialogPrimitive.Content
+           aria-labelledby={titleId}
+-          className="fixed left-1/2 top-1/2 z-[71] w-[calc(100%-1.5rem)] sm:w-full max-w-4xl h-[92vh] -translate-x-1/2 -translate-y-1/2 overflow-hidden bg-card border border-border rounded-2xl shadow-2xl flex flex-col focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
++          onCloseAutoFocus={(e) => {
++            const opener = openerRef.current;
++            if (opener && document.contains(opener)) {
++              e.preventDefault();
++              opener.focus({ preventScroll: true });
++            }
++          }}
++          className="fixed left-1/2 top-1/2 z-[81] w-[calc(100%-1.5rem)] sm:w-[calc(100%-3rem)] max-w-4xl h-[92dvh] -translate-x-1/2 -translate-y-1/2 overflow-hidden bg-card border border-border rounded-2xl shadow-2xl flex flex-col focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+         >
+           <div className="p-5 sm:p-6 border-b border-border shrink-0 flex items-start justify-between gap-4">
+             <div className="min-w-0">
+diff --git a/src/components/site-nav.tsx b/src/components/site-nav.tsx
+index 9382d52..c5e7d65 100644
+--- a/src/components/site-nav.tsx
++++ b/src/components/site-nav.tsx
+@@ -1,5 +1,5 @@
+ import { Link } from "@tanstack/react-router";
+-import { useEffect, useState } from "react";
++import { useCallback, useEffect, useRef, useState } from "react";
+ import { BrandWordmark } from "@/components/brand-mark";
+ import { EMAIL, EMAIL_HREF, TEL_HREF, WA_DISPLAY, waLink, waTrackedProps, telTrackedProps, emailTrackedProps } from "@/lib/contact";
+ import { track } from "@/lib/analytics";
+@@ -18,6 +18,15 @@ const WA_QUOTE = waLink("Hi LWD Africa, I'd like a landed quote.");
+ export function SiteNav() {
+   const [open, setOpen] = useState(false);
+   const [scrolled, setScrolled] = useState(false);
++  const drawerRef = useRef<HTMLDivElement>(null);
++  const toggleRef = useRef<HTMLButtonElement>(null);
++  const closeMenu = useCallback(() => {
++    setOpen(false);
++    // preventScroll matters here: focusing anything inside a sticky header
++    // makes the browser scroll it "into view" against its unstuck layout
++    // position, which throws the page ~450px up on close.
++    toggleRef.current?.focus({ preventScroll: true });
++  }, []);
+ 
+   useEffect(() => {
+     const onScroll = () => setScrolled(window.scrollY > 8);
+@@ -26,13 +35,62 @@ export function SiteNav() {
+     return () => window.removeEventListener("scroll", onScroll);
+   }, []);
+ 
++  // Lock the page behind the drawer. The previous value is saved and restored
++  // rather than blanked, so closing the drawer cannot release a lock that a
++  // dialog set, and unmounting on a route change cannot strand the page.
+   useEffect(() => {
+-    document.body.style.overflow = open ? "hidden" : "";
+-    return () => { document.body.style.overflow = ""; };
++    if (!open) return;
++    const { body } = document;
++    const prevOverflow = body.style.overflow;
++    const prevPaddingRight = body.style.paddingRight;
++    const scrollbarGap = window.innerWidth - document.documentElement.clientWidth;
++    body.style.overflow = "hidden";
++    if (scrollbarGap > 0) body.style.paddingRight = `${scrollbarGap}px`;
++    return () => {
++      body.style.overflow = prevOverflow;
++      body.style.paddingRight = prevPaddingRight;
++    };
+   }, [open]);
+ 
++  // Escape closes the drawer; Tab is kept inside it while it is open.
++  useEffect(() => {
++    if (!open) return;
++    const onKeyDown = (e: KeyboardEvent) => {
++      if (e.key === "Escape") {
++        e.preventDefault();
++        closeMenu();
++        return;
++      }
++      if (e.key !== "Tab") return;
++      const drawer = drawerRef.current;
++      const toggle = toggleRef.current;
++      if (!drawer || !toggle) return;
++      const focusable = [toggle, ...Array.from(drawer.querySelectorAll<HTMLElement>("a[href], button:not([disabled])"))];
++      const i = focusable.indexOf(document.activeElement as HTMLElement);
++      // Every Tab is driven here rather than natively, because the drawer's
++      // items sit under a sticky header: the browser would "scroll them into
++      // view" against their unstuck layout position and creep the locked page
++      // upwards. preventScroll keeps the page exactly where the visitor left it.
++      const next = e.shiftKey
++        ? focusable[(i <= 0 ? focusable.length : i) - 1]
++        : focusable[i === -1 || i === focusable.length - 1 ? 0 : i + 1];
++      e.preventDefault();
++      next.focus({ preventScroll: true });
++    };
++    document.addEventListener("keydown", onKeyDown);
++    return () => document.removeEventListener("keydown", onKeyDown);
++  }, [open, closeMenu]);
++
+   return (
+-    <header className={`sticky top-0 z-50 transition-all duration-500 ${scrolled ? "bg-background/88 backdrop-blur-xl border-b border-border/80" : "bg-background/45 backdrop-blur-sm"}`}>
++    <header className={`sticky top-0 z-50 transition-all duration-500 ${scrolled ? "border-b border-border/80" : ""}`}>
++      {/* The tinted blur lives on its own layer rather than on <header>.
++          backdrop-filter on the header would make it both a backdrop root
++          (neutering the drawer's own backdrop-blur) and a containing block for
++          fixed descendants. Same pixels, without either side effect. */}
++      <div
++        aria-hidden="true"
++        className={`absolute inset-0 -z-10 transition-all duration-500 ${scrolled ? "bg-background/88 backdrop-blur-xl" : "bg-background/45 backdrop-blur-sm"}`}
++      />
+       <div className="container-x flex items-center justify-between h-16 md:h-20">
+         <Link to="/" onClick={() => setOpen(false)} className="flex items-center gap-3 group">
+           <div className="leading-tight">
+@@ -53,10 +111,13 @@ export function SiteNav() {
+           <a href={WA_QUOTE} {...waTrackedProps("nav")} className="hidden md:inline-flex nav-link-luxury mr-3">{WA_DISPLAY}</a>
+           <a href={WA_QUOTE} {...waTrackedProps("nav")} onClick={() => { track("cta_click", { cta: "nav_quote" }); track("whatsapp_click", { location: "nav" }); }} className="btn-gold !py-2.5 !px-4 hidden sm:inline-flex">Quote</a>
+           <button
++            ref={toggleRef}
++            type="button"
+             aria-label={open ? "Close menu" : "Open menu"}
+             aria-expanded={open}
++            aria-controls="site-nav-mobile"
+             onClick={() => setOpen((v) => !v)}
+-            className="lg:hidden relative w-10 h-10 grid place-items-center rounded-sm border border-border bg-card/60"
++            className="lg:hidden relative w-11 h-11 grid place-items-center rounded-sm border border-border bg-card/60"
+           >
+             <span className={`absolute h-px w-5 bg-foreground transition-all duration-300 ${open ? "rotate-45" : "-translate-y-1.5"}`} />
+             <span className={`absolute h-px w-5 bg-foreground transition-all duration-300 ${open ? "opacity-0" : ""}`} />
+@@ -65,10 +126,21 @@ export function SiteNav() {
+         </div>
+       </div>
+ 
+-      {/* Mobile drawer */}
+-      <div className={`lg:hidden fixed inset-x-0 top-16 bottom-0 z-40 transition-all duration-500 ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
+-        <div className="absolute inset-0 bg-background/95 backdrop-blur-2xl" onClick={() => setOpen(false)} />
+-        <nav className="relative container-x pt-8 pb-10 flex flex-col gap-1">
++      {/* Mobile drawer.
++          Positioned absolutely against the sticky header, not fixed to the
++          viewport: this header carries backdrop-blur, which makes it the
++          containing block for fixed descendants, so `fixed top-16 bottom-0`
++          resolved against the 64px header and collapsed the drawer to 0px
++          tall. `top-full` + a dvh height gives the same "everything below the
++          header" box without depending on fixed positioning at all. */}
++      <div
++        id="site-nav-mobile"
++        ref={drawerRef}
++        inert={!open}
++        className={`lg:hidden absolute inset-x-0 top-full h-[calc(100dvh-4rem)] md:h-[calc(100dvh-5rem)] z-40 transition-all duration-500 ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
++      >
++        <div className="absolute inset-0 bg-background/95 backdrop-blur-2xl" onClick={closeMenu} />
++        <nav className="relative max-h-full overflow-y-auto overscroll-contain container-x pt-8 pb-10 flex flex-col gap-1">
+           {NAV_LINKS.map((l, i) => (
+             <Link
+               key={l.label}
+@@ -130,7 +202,10 @@ export function SiteFooter() {
+         </div>
+       </div>
+       <div className="border-t border-border relative">
+-        <div className="container-x py-5 text-xs text-muted-foreground flex flex-wrap items-center justify-between gap-3">
++        {/* Extra bottom padding under 360px only: the floating WhatsApp button
++            occupies the bottom-right 92x80px of the viewport, and at 320px the
++            legal links wrap far enough right to sit underneath it. */}
++        <div className="container-x py-5 max-[359px]:pb-24 text-xs text-muted-foreground flex flex-wrap items-center justify-between gap-3">
+           <span>© {new Date().getFullYear()} LWD Africa. All rights reserved.</span>
+           <nav aria-label="Legal" className="flex flex-wrap items-center gap-x-5 gap-y-2">
+             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
+diff --git a/src/components/whatsapp-fab.tsx b/src/components/whatsapp-fab.tsx
+index c788e5a..0fdb01c 100644
+--- a/src/components/whatsapp-fab.tsx
++++ b/src/components/whatsapp-fab.tsx
+@@ -8,7 +8,7 @@ export function WhatsAppFab() {
+       href={waLink(WA_TEXT)}
+       {...waTrackedProps("fab")}
+       aria-label="Chat with LWD Africa on WhatsApp"
+-      className="group fixed z-[60] bottom-5 right-5 md:bottom-7 md:right-7 flex items-center gap-3 pl-4 pr-5 py-3 rounded-full whatsapp-button font-medium text-sm transition-transform duration-300 hover:-translate-y-0.5"
++      className="group fixed z-40 bottom-5 right-5 md:bottom-7 md:right-7 flex items-center gap-3 pl-4 pr-5 py-3 rounded-full whatsapp-button font-medium text-sm transition-transform duration-300 hover:-translate-y-0.5"
+     >
+       <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-foreground/15">
+         <span className="absolute inline-flex h-full w-full rounded-full bg-foreground/25 opacity-70 animate-ping" />
+diff --git a/src/routes/cars_.tsx b/src/routes/cars_.tsx
+index d3bb834..3f066b3 100644
+--- a/src/routes/cars_.tsx
++++ b/src/routes/cars_.tsx
+@@ -1,5 +1,5 @@
+ import { createFileRoute, Link } from "@tanstack/react-router";
+-import { useMemo, useState } from "react";
++import { useEffect, useMemo, useRef, useState } from "react";
+ import { SiteNav, SiteFooter } from "@/components/site-nav";
+ import { CARS, BRANDS, type Car } from "@/lib/data";
+ import { InquiryDialog } from "@/components/inquiry-dialog";
+@@ -70,6 +70,8 @@ function CarsPage() {
+   const [q, setQ] = useState("");
+   const [active, setActive] = useState<Car | null>(null);
+   const [mode, setMode] = useState<"details" | "inquire">("details");
++  const barRef = useRef<HTMLElement | null>(null);
++  const resultsRef = useRef<HTMLElement | null>(null);
+ 
+   const openCar = (c: Car, m: "details" | "inquire") => { setMode(m); setActive(c); track("vehicle_inquiry_open", { vehicle: `${c.brand} ${c.name}`, mode: m }); };
+ 
+@@ -83,6 +85,19 @@ function CarsPage() {
+     });
+   }, [drive, power, brand, q]);
+ 
++  // Narrowing the filters shortens the page, so a reader who was deep in the
++  // grid can be left below every result, staring at the footer with no sign of
++  // the new count or the empty state. If the results have ended up entirely
++  // above the sticky bar, pull them back under it.
++  useEffect(() => {
++    const results = resultsRef.current;
++    const bar = barRef.current;
++    if (!results || !bar) return;
++    const barBottom = bar.getBoundingClientRect().bottom;
++    const box = results.getBoundingClientRect();
++    if (box.bottom < barBottom) window.scrollBy({ top: box.top - barBottom, behavior: "instant" });
++  }, [cars.length]);
++
+   return (
+     <div>
+       <SiteNav />
+@@ -102,24 +117,27 @@ function CarsPage() {
+         </div>
+       </section>
+ 
+-      <section className="container-x py-5 border-b border-border sticky top-16 md:top-20 bg-background/88 backdrop-blur-xl z-30">
++      <section ref={barRef} className="container-x py-3 md:py-5 border-b border-border sticky top-16 md:top-20 bg-background/88 backdrop-blur-xl z-30">
+         <div className="flex flex-wrap gap-3 items-center justify-between">
+-          <div className="flex flex-wrap gap-2">
++          {/* Below md the groups sit on one line that scrolls inside itself, so the
++              page body never scrolls sideways and the bar stays short on a phone.
++              From md up they wrap exactly as before. */}
++          <div className="flex md:flex-wrap items-center gap-2 max-w-full overflow-x-auto md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+             <FilterGroup label="Drive" value={drive} onChange={(v) => setDrive(v as DriveFilter)} options={[["all","All"],["LHD","LHD"],["RHD","RHD"]]} />
+             <FilterGroup label="Fuel" value={power} onChange={(v) => setPower(v as PowerFilter)} options={[["all","All"],["Diesel","Diesel"],["Petrol","Petrol"],["Hybrid","Hybrid"],["PHEV","PHEV"],["BEV","EV"]]} />
+-            <div className="flex items-center gap-2">
++            <div className="flex items-center gap-2 shrink-0">
+               <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Brand</span>
+-              <select value={brand} onChange={(e) => setBrand(e.target.value)} className="bg-card border border-border rounded-sm px-2 py-1.5 text-xs uppercase tracking-wider">
++              <select value={brand} onChange={(e) => setBrand(e.target.value)} className="bg-card border border-border rounded-sm px-2 py-1.5 min-h-11 md:min-h-0 text-xs uppercase tracking-wider">
+                 <option value="all">All brands</option>
+                 {BRANDS.map((b) => <option key={b} value={b}>{b}</option>)}
+               </select>
+             </div>
+           </div>
+-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search models…" className="bg-input border border-border rounded-sm px-3 py-2 text-sm w-full sm:w-64" />
++          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search models…" className="bg-input border border-border rounded-sm px-3 py-2 min-h-11 md:min-h-0 text-sm w-full sm:w-64" />
+         </div>
+       </section>
+ 
+-      <section className="container-x py-12">
++      <section ref={resultsRef} className="container-x py-12">
+         <div className="text-sm text-muted-foreground mb-6">{cars.length} of {CARS.length} vehicles</div>
+         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+           {cars.map((c, i) => (
+@@ -178,11 +196,11 @@ function MiniStat({ k, v }: { k: string; v: string }) {
+ 
+ function FilterGroup({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
+   return (
+-    <div className="flex items-center gap-2">
++    <div className="flex items-center gap-2 shrink-0">
+       <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{label}</span>
+       <div className="flex bg-card border border-border rounded-sm p-1">
+         {options.map(([v, l]) => (
+-          <button key={v} onClick={() => onChange(v)} className={`px-3 py-1 text-[11px] uppercase tracking-wider rounded-sm transition-colors ${value === v ? "bg-primary text-primary-foreground font-semibold" : "text-muted-foreground hover:text-foreground"}`}>{l}</button>
++          <button key={v} onClick={() => onChange(v)} className={`inline-flex items-center justify-center px-3 py-1 min-h-11 md:min-h-0 text-[11px] uppercase tracking-wider rounded-sm transition-colors ${value === v ? "bg-primary text-primary-foreground font-semibold" : "text-muted-foreground hover:text-foreground"}`}>{l}</button>
+         ))}
+       </div>
+     </div>
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 666a873..e42f375 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -46,10 +46,10 @@ export const Route = createFileRoute("/")({
+         rel: "preload",
+         as: "image",
+         href: `/cars/${HERO_CAR.slug}-1280.webp`,
+-        imagesrcset: `/cars/${HERO_CAR.slug}-640.webp 640w, /cars/${HERO_CAR.slug}-1280.webp 1280w`,
+-        imagesizes: HERO_SIZES,
++        imageSrcSet: `/cars/${HERO_CAR.slug}-640.webp 640w, /cars/${HERO_CAR.slug}-1280.webp 1280w`,
++        imageSizes: HERO_SIZES,
+         type: "image/webp",
+-        fetchpriority: "high",
++        fetchPriority: "high",
+       },
+ 
+     ],
+@@ -218,7 +218,10 @@ function Stats() {
+   ];
+   return (
+     <section className="border-y border-border bg-[color:var(--surface)]">
+-      <div className="container-x grid grid-cols-2 md:grid-cols-4 divide-x divide-border">
++      {/* divide-x draws a rule on the right of every cell but the last, so in the
++          two-column mobile layout the second cell leaves a rule hanging off the
++          right edge of the band. Suppress it below md only. */}
++      <div className="container-x grid grid-cols-2 md:grid-cols-4 divide-x divide-border max-md:[&>*:nth-child(2)]:border-r-0">
+         {stats.map((s) => (
+           <div key={s.v} className="py-8 px-4 md:px-6 text-center">
+             <div className="text-3xl md:text-4xl font-display font-semibold text-primary">{s.k}</div>
+@@ -254,7 +257,7 @@ function Services() {
+     { t: "Door-to-Door", d: "We clear customs at destination and deliver inland to your address, anywhere in West Africa. Full logistics to the point of delivery." },
+   ];
+   return (
+-    <section id="services" className="container-x py-20 md:py-28 scroll-mt-20">
++    <section id="services" className="container-x py-20 md:py-28">
+       <div className="max-w-3xl">
+         <div className="eyebrow">What we do</div>
+         <h2 className="mt-3 text-4xl md:text-6xl font-semibold leading-[0.95]">A private buying office for serious cars going into West Africa.</h2>
+@@ -275,7 +278,7 @@ function Services() {
+ 
+ function Countries({ onShip }: { onShip: (country: string) => void }) {
+   return (
+-    <section id="destinations" className="relative border-t border-border scroll-mt-20">
++    <section id="destinations" className="relative border-t border-border">
+       <div className="container-x py-20 md:py-28 grid gap-12 lg:grid-cols-[1fr_1.2fr] items-center">
+         <div>
+           <div className="eyebrow">Destinations</div>
+@@ -292,13 +295,16 @@ function Countries({ onShip }: { onShip: (country: string) => void }) {
+               <li key={c.name} className="flex items-center gap-2 p-3.5 rounded-lg bg-card border border-border hover:border-primary hover:bg-[color:var(--surface)] transition-colors group">
+                 <span className="text-2xl" aria-hidden>{c.flag}</span>
+                 <div className="flex-1 min-w-0">
+-                  <Link to="/ship-to/$country" params={{ country: slug }} className="font-medium truncate block hover:text-primary">{c.name}</Link>
++                  {/* py/-my pairs grow the touch target to 44px without moving anything:
++                      the padding is cancelled by an equal negative margin. */}
++                  <Link to="/ship-to/$country" params={{ country: slug }} className="font-medium truncate block hover:text-primary py-2.5 -my-2.5">{c.name}</Link>
+                   <div className="text-xs text-muted-foreground">{c.drive}</div>
+                 </div>
+                 <button
+                   type="button"
+                   onClick={() => onShip(c.name)}
+-                  className="text-xs text-primary font-medium group-hover:translate-x-0.5 transition-transform"
++                  aria-label={`Ship a vehicle to ${c.name}`}
++                  className="text-xs text-primary font-medium group-hover:translate-x-0.5 transition-transform py-3.5 -my-3.5 pr-3.5 -mr-3.5"
+                 >
+                   Ship →
+                 </button>
+@@ -363,7 +369,7 @@ function Process() {
+     { t: "Clear & Deliver", d: "We clear customs at destination and deliver inland to your address. You take the keys, we've handled the rest." },
+   ];
+   return (
+-    <section id="process" className="container-x py-20 md:py-28 scroll-mt-20">
++    <section id="process" className="container-x py-20 md:py-28">
+       <div className="eyebrow">How it works</div>
+       <h2 className="mt-3 text-3xl md:text-5xl font-semibold max-w-2xl">Four steps from showroom floor to your driveway in West Africa.</h2>
+       <ol className="mt-12 grid gap-4 md:grid-cols-4">
+@@ -382,7 +388,7 @@ function Process() {
+ function Contact() {
+   const waHref = waLink("Hi LWD Africa, I'd like a landed door-to-door quote. My destination is ___ and I'm interested in ___.");
+   return (
+-    <section id="contact" className="border-t border-border scroll-mt-20">
++    <section id="contact" className="border-t border-border">
+       <div className="container-x py-20 md:py-28 grid gap-10 lg:grid-cols-2 items-start">
+         <div>
+           <div className="eyebrow">Get in touch</div>
+@@ -434,7 +440,7 @@ function WhyLWD() {
+     { t: "The right car for your country", d: "Left-hand drive as standard for West Africa's roads, right-hand drive from UK stock on request — always matched to your destination." },
+   ];
+   return (
+-    <section id="why" className="border-t border-border scroll-mt-20">
++    <section id="why" className="border-t border-border">
+       <div className="container-x py-20 md:py-28">
+         <div className="max-w-3xl">
+           <div className="eyebrow">Why LWD Africa</div>
+@@ -470,7 +476,7 @@ function FAQ() {
+     { q: "How do I get started?", a: "Message us on WhatsApp at +44 7568 765929 with the vehicle and your destination country. You'll get an all-in landed quote back — usually within 24 hours." },
+   ];
+   return (
+-    <section id="faq" className="border-t border-border bg-[color:var(--surface)] scroll-mt-20">
++    <section id="faq" className="border-t border-border bg-[color:var(--surface)]">
+       <div className="container-x py-20 md:py-28 grid gap-10 lg:grid-cols-[1fr_1.4fr]">
+         <div>
+           <div className="eyebrow">Questions, answered</div>
+diff --git a/src/styles.css b/src/styles.css
+index a697f74..9add313 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -85,6 +85,18 @@
+ 
+   html {
+     scroll-behavior: smooth;
++    /* Anchor landing offset for #services, #destinations, #process, #contact.
++       The sticky header is 64px tall (80px from md), and the scroll-driven
++       reveal below holds a not-yet-entered section 28px lower than its final
++       position. Anchor scrolling measures that transformed box, so the 28px is
++       added back here; without it the section settles under the header.
++       Set on the scroll container so every page gets it, instead of a
++       scroll-mt utility repeated on each section. */
++    scroll-padding-top: 116px; /* 64 header + 24 air + 28 reveal offset */
++  }
++
++  @media (min-width: 768px) {
++    html { scroll-padding-top: 132px; } /* 80 header + 24 air + 28 reveal offset */
+   }
+ 
+   body {
+@@ -229,13 +241,24 @@
+   &:hover > img { transform: scale(1.06); }
+ }
+ 
++/* Note: with animation-fill-mode: both this keyframe's filter is retained for
++   good, and a computed filter of blur(0px) still counts as "has a filter", so
++   every section/article stays a containing block for position: fixed
++   descendants. Do not put a fixed-position element inside a <section> or
++   <article> on this site; it will be positioned against that element's box
++   rather than the viewport. */
+ @keyframes lwd-fade-up {
+   from { opacity: 0; transform: translateY(28px); filter: blur(6px); }
+   to { opacity: 1; transform: translateY(0); filter: blur(0); }
+ }
++/* Page-load fade, opacity only. This runs on <body>, which is an ancestor of the
++   fixed WhatsApp button and cookie banner, so it must never use `filter`: a
++   filtered ancestor becomes their containing block, and fill-mode both keeps the
++   final blur(0) for ever, which pinned both of them to the bottom of the whole
++   document instead of the viewport. */
+ @keyframes lwd-fade-in {
+-  from { opacity: 0; filter: blur(8px); }
+-  to { opacity: 1; filter: blur(0); }
++  from { opacity: 0; }
++  to { opacity: 1; }
+ }
+ @keyframes lwd-shine {
+   0% { background-position: -200% 0; }
