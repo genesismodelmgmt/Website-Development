@@ -9,8 +9,9 @@ Owner decisions on the day, recorded because they shape everything below:
 - Services expand to **full export logistics for all cargo, on any route**, plus
   shipping a vehicle the customer already owns from A to B worldwide. The car
   sourcing business is unchanged and keeps its prominence.
-- **Nothing is published to lwdcarsafrica.com without explicit approval, ever.**
-  All of this sits on the Lovable preview.
+- **Nothing is published to lwdcarsafrica.com without explicit approval.** That
+  held for this piece of work. The owner gave that approval on 8 September and
+  the site is now live: see `lwd-africa-3-seo-polish-and-publish.md`.
 - Real photography is to be sourced for the new services.
 
 ## What was built
@@ -130,7 +131,8 @@ photograph rather than the service, a credit line generated onto `/image-credits
 from the same data, and a cropped share image per page. Nothing pictured is
 presented as LWD Africa's own vessels, terminals or equipment.
 
-**Nothing published.** lwdcarsafrica.com still serves the July build.
+**Nothing published at the time of writing.** The site went live on 8 September,
+after the polish and SEO pass recorded in `lwd-africa-3-seo-polish-and-publish.md`.
 
 Note for whoever picks this up next: the local mirror used to build and test this
 work is now behind the Lovable project, which carries the photography fields, the

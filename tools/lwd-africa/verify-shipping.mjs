@@ -602,8 +602,19 @@ if (wants("console") && SHIPPING_PRESENT) {
   const aborted = new Set();
   for (const route of NEW_ROUTES) {
     const { page, context } = await newPage(browser, { width: 390 });
+    // The freight photography and Google Fonts live on hosts this sandbox
+    // blocks, and the browser reports each blocked load as a generic "Failed to
+    // load resource" console error carrying no URL. That says nothing about the
+    // site: the requests that matter are asserted below, against local URLs
+    // only. Without this filter the check fails on every run for a reason that
+    // will not exist in production, which trains everyone to ignore it.
+    const SANDBOX_EGRESS =
+      /Failed to load resource: net::(ERR_TUNNEL_CONNECTION_FAILED|ERR_CONNECTION_RESET|ERR_NAME_NOT_RESOLVED|ERR_BLOCKED_BY_CLIENT|ERR_PROXY_CONNECTION_FAILED)/;
     page.on("console", (m) => {
-      if (m.type() === "error") consoleErrors.add(`${route}  ${m.text().slice(0, 150)}`);
+      if (m.type() !== "error") return;
+      const text = m.text();
+      if (SANDBOX_EGRESS.test(text)) return;
+      consoleErrors.add(`${route}  ${text.slice(0, 150)}`);
     });
     page.on("pageerror", (e) => consoleErrors.add(`${route}  pageerror: ${e.message.slice(0, 150)}`));
     page.on("requestfailed", (r) => {
