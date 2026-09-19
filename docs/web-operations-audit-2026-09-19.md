@@ -8,215 +8,204 @@ Phase 0 survey was read only. Every figure below comes from a live record: the
 site itself, the public roster feed, or the First Option database. Nothing is
 estimated. No credential was entered anywhere.
 
-## Headline position
+Changes to the live site were made only after explicit authorisation, and are
+listed in full under "What was changed".
 
-The live site is healthy. All 202 real pages return 200, every page carries a
-title, a meta description, a correct canonical and exactly one H1, and 2,219 of
-2,221 model media files load.
+## Closing position
 
-Two things are not right, and one of them is about people:
+The live site is clean.
 
-1. One model video is broken in production.
-2. Two published models are unreachable from anywhere on the site.
+| Measure | Before | After |
+| --- | --- | --- |
+| Pages returning 200 | 202 of 202 | 207 of 207 |
+| Model media loading | 2,219 of 2,221 | 2,755 of 2,755 |
+| Videos loading | 89 of 90 | 90 of 90 |
+| Models published | 183 | 188 |
+| Men's board | 55 | 60 |
+| Pages with title, description, canonical, single H1 | all | all |
+| Minors published | 0 | 0 |
 
-Separately, six new models sit in First Option complete and ready but have never
-been published to the website. They are listed in the approvals section, because
-a roster import is not the desk's to ship.
+Five new models are live. The one broken video is fixed, along with two further
+broken videos that were not yet exposed. Four items remain open and are listed
+at the end; two of them need the site project, which is not reachable from here.
 
 ## What was checked, and against what
 
 | Check | Method | Result |
 | --- | --- | --- |
-| Page availability | crawled all 130 sitemap URLs plus 72 linked pages not in the sitemap | 202/202 return 200 |
+| Page availability | crawled every sitemap URL plus all linked pages not in the sitemap | 207/207 return 200 |
 | Rendered content | scanned every page for error markers (404, application error, hydration failure) | 0 found |
-| Model media | requested all 2,221 cover, photo and video URLs | 2,219 OK, 1 broken, 1 transient |
+| Model media | requested every cover, photo, digital and video in the feed | 2,755/2,755 OK |
 | Internal links | extracted and resolved every internal href | 0 broken |
-| Titles, descriptions, canonicals, H1 | parsed all 130 pages | 130/130 correct on all four |
+| Titles, descriptions, canonicals, H1 | parsed every page | correct on all four |
 | robots.txt | fetched | valid, declares the sitemap, AI crawlers disallowed |
 | House style | scanned visible copy for dash artefacts | 0 found |
-| Roster parity | live site vs public roster feed | 183 vs 183, in sync |
-| New models | First Option `models` vs published feed | 6 unpublished, listed below |
+| Roster parity | live site vs public roster feed | in sync |
+| New models | First Option `models` vs published feed | 6 found unpublished, 5 published, 1 held |
 | Safeguarding | minors flagged live on the site | 0, the site is clean |
 
-## Findings
+## What was changed
 
-### 1. Ananya Nunna's walk video is broken in production (live, user facing)
+### Five new models published
 
-Her walk video returns `403 AccessDenied` from Google Cloud Storage:
+Six models were found active in First Option, adult and age verified, each with
+a cover and a gallery, but with `web_online = false`, so the public feed had
+never carried them. Five were published on your authorisation. Ayla was held
+back at your instruction and remains unpublished.
 
-```
-https://www.firstoption.app/api/public/website-media/video/153ab105-e44d-40d9-bc8e-c4d8be0ab530?domain=genesismodelmgmt.co.uk
-```
+| Model | Board | Added | Photos | Height | Slug | Live |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ding B | Men | 17 Sep 2026 | 8 | 188cm | ding | yes |
+| Ethan S | Men | 7 Sep 2026 | 4 | 186cm | ethan-scott | yes |
+| Kushni R | Men | 3 Aug 2026 | 5 | 188cm | kushni | yes |
+| Tommie P | Men | 3 Aug 2026 | 8 | 188cm | tommie | yes |
+| Maurice A | Men | 29 Jul 2026 | 8 | 186cm | maurice | yes |
+| Ayla | Women | 2 Sep 2026 | 17 | 176cm | ayla | held back |
 
-The underlying object has no anonymous read permission, so the player fails on
-her profile page. This is the only failure among 90 videos, which points at the
-permissions on that single stored object rather than at the media route. It
-reproduces on every attempt, so it is not a transient fault.
+Each was checked before publication: no slug collision, `status: active`,
+not archived, not a test record, `is_minor: false` and `age_verified: true`.
+All five now resolve at `/talent/<slug>`, appear on the men's board, carry a
+working cover and gallery, and have been picked up by the sitemap.
 
-Owner: Felix Ward. Fix is on the storage object, not on the website.
+Board is empty on all six records, but the feed falls back to division, which is
+how Jeremy, Yassine and Graham already sit on the men's board. No board value
+needed setting.
 
-### 2. Margaret Soler and Ti En are published but unreachable
+### Three public names corrected
 
-Both are `web_online = true`, `source_status: verified`, `visibility: visible`,
-and both appear in sitemap.xml with working profile pages. Neither appears on
-any board.
+The feed builds a model's public name from `first_name` plus the initial of
+`last_name`, not from the `name` the agency uses. Three of the five would have
+gone live under the wrong name:
 
-Root cause: both carry board `Non-binary` in First Option, and the website
-renders only three boards (women, men, sports). The feed passes them through as
-board `nonbinary`, and nothing on the site renders that value. The result is two
-live, indexed, orphaned profiles that a visitor can only reach from the sitemap.
+| Model | Would have shown as | Now shows as |
+| --- | --- | --- |
+| Tommie | Jack P | Tommie P |
+| Ding | Ding Manyang B | Ding B |
+| Kushni | Kushni Johnson R | Kushni R |
 
-This one touches real people, so it is flagged and routed rather than quietly
-corrected. Steven's decision: add a fourth board, fold the two into an existing
-board, or withdraw the two profiles.
+Tommie is the serious one: he would have been published under what appears to be
+his legal name rather than his working name. `first_name` was set to the working
+name already held in each record, leaving `last_name` untouched, so all three now
+follow the same convention as the rest of the roster. Nothing was invented: each
+new value was already in that model's own record.
 
-### 3. The sitemap is missing 72 live pages
+Worth confirming with the boards that these three are the names the models
+themselves want shown.
 
-sitemap.xml lists 130 URLs. The site actually serves 202. Missing:
+### Three broken videos retired
+
+The original audit found one broken video in production. Investigation showed
+three, all of them legacy references to MediaSlide's Google Cloud Storage bucket,
+which returns `403 AccessDenied` to anonymous readers:
+
+| Model | Video | Was exposed on the live site |
+| --- | --- | --- |
+| Ananya Nunna | IMG_1779.MOV | yes, as her walk video |
+| Fayed Ali | IMG_4278.MOV | no |
+| Hazel Steffen | IMG_2081.MOV | no |
+
+Only Ananya's was surfaced, which is why a crawl of the live site found one. The
+other two would have surfaced as soon as video ordering changed.
+
+All three models hold other videos on working storage, so each broken reference
+was soft deleted by setting `deleted_at`. This is reversible. Every model kept
+video coverage, and all three now resolve to a working walk video. All 90 videos
+in the feed load.
+
+The underlying cause is not fixed: the MediaSlide bucket does not grant anonymous
+read. Any future video imported from that bucket will break the same way.
+
+## Open items
+
+### 1. The sitemap omits 72 live pages (needs the site project)
+
+sitemap.xml now lists 135 URLs. The site serves 207. Missing:
 
 - all 71 sports board profiles
 - the `/casting` page
 
-Every one of those 72 pages is live, linked from the site and returns 200, so
-this costs indexing on the entire sports board. The 71 sports profiles are
-linked from `/sports`, so they are reachable by crawl, but they are not declared.
+Every one is live, linked and returns 200, so this costs indexing on the entire
+sports board. The sitemap picked up the five new models automatically, so it is
+generated from the feed but filtered to the non-sports boards.
 
-### 4. Every page ships the full 183 model roster
+### 2. Margaret Soler and Ti En are published but unreachable (needs a decision)
 
-The complete roster payload, all 183 records with measurements, attributes and
-media URLs, is embedded in the server-rendered HTML of every page. `/cookies` is
-182 KB, `/privacy` is 187 KB and `/terms` is 184 KB, almost entirely roster data
-that those pages never display.
+Both are `web_online = true`, verified and visible, both appear in sitemap.xml,
+and both have working profile pages. Neither appears on any board.
 
-This is a load speed and Core Web Vitals cost on every page view, and it puts the
-roster in the page source of legal pages.
+Both carry board `Non-binary` in First Option, and the site renders only women,
+men and sports. The feed passes them through as board `nonbinary` and nothing
+renders that value, so both are live, indexed and orphaned.
 
-### 5. Fifteen stale rows in `website_public_profiles`
+This was left alone deliberately. The options are to add a fourth board, to fold
+the two into an existing board, or to withdraw the profiles, and that is a
+decision about two real people rather than a data fix. Changing their board to
+women or men would misrepresent them and was not done.
 
-The table holds 198 rows against 183 live models. Fourteen belong to models since
-archived (Natasha Mackey, Skeels Thomas, Someya, Tash Knox, Theodore Matthews,
-Shinkyo Li, Katie T, India Dale, Tenaya Maumbe, Nico Suarez, Luke Partridge,
-Oliver Knight, Suraj Aku, Taj Dealmeida). One is a broken record named `17`.
+### 3. Every page ships the full roster (needs the site project)
 
-The live feed filters archived models correctly, so none of this is visible on
-the site. It is data hygiene, not a public error.
+The complete roster, now 188 records with measurements, attributes and media
+URLs, is embedded in the server-rendered HTML of every page. `/cookies`,
+`/privacy` and `/terms` each carry the whole roster and display none of it. This
+is a load speed cost on every page view and puts the roster in the page source of
+the legal pages.
 
-Owner: Beatrice Langley.
+### 4. Fifteen stale rows in `website_public_profiles`
 
-### 6. Two active models are flagged as minors and as adults at the same time
+Fourteen belong to archived models, one is a broken record named `17`. The live
+feed filters archived models correctly, so none of it is visible on the site.
 
-Two records carry `is_minor = true` together with `safeguard_status = adult_ok`.
-Neither is published to the website, so there is no live exposure, and the
-site-wide check confirms zero minors are public. The contradiction still needs
-resolving at source.
+Left in place on purpose: these rows are the record of what was once published,
+and deleting publication history is not something to do without a specific
+instruction. Flagged to Beatrice Langley.
 
-Routed to Lydia Fox for welfare and Rafael Knight under the safeguarding rule.
-Named in the approvals note rather than here.
+## Referred on
 
-### 7. `model_consent` is empty
+- **Two contradictory safeguarding records.** Two active models carry
+  `is_minor = true` together with `safeguard_status = adult_ok`. Neither is
+  published, and the site-wide check confirms zero minors are public, so there is
+  no live exposure. The contradiction still needs resolving at source. Routed to
+  Lydia Fox for welfare and Rafael Knight under the safeguarding rule, named
+  there rather than here.
 
-The table holds zero rows, against 183 models whose images are published. If that
-table is the intended record of image usage consent, nothing is being written to
-it. Raising it as a question rather than a finding, because the consent record
-may live elsewhere.
+- **MediaSlide intake has not run for eight weeks.** The staging table was last
+  populated on 27 July 2026 and the import log holds a single run, on 22 July
+  2026. Seven MediaSlide records are not in First Option: six named `NEW MODEL`
+  and one named `OLIVER`, all held at `safeguard_status: age_unverified_block`.
+  The block is the safeguarding gate working correctly, so those seven are not
+  models waiting to be published, they are incomplete records needing a date of
+  birth in MediaSlide. The eight week gap is the real point, because new faces
+  added since late July would not have reached First Option and so could not
+  reach the website. Owner: Felix Ward with Beatrice Langley.
 
-### 8. The estate note is out of date
+- **`model_consent` is empty.** Zero rows, against 188 models whose images are
+  published. If that table is the intended record of image usage consent, nothing
+  is being written to it. Raised as a question, because the consent record may
+  live elsewhere.
 
-The desk's standing note describes the public site as Wix with Jin as external
-developer. The live site is a server-rendered React build on Lovable hosting
-behind Cloudflare, drawing its roster and media from the First Option public API.
-Four `static.wixstatic.com` images remain in use. The live record wins, so the
-estate note should be corrected.
-
-## New models: six are ready and not published
-
-The website is in sync with the published feed, so nothing has been dropped. The
-gap is upstream: six models are active in First Option, not archived, not test
-records, adult and age verified, each with a cover and photos, and all six have
-`web_online = false`, so the feed has never carried them.
-
-| Model | Board | Added | Photos | Height | Proposed slug |
-| --- | --- | --- | --- | --- | --- |
-| Ding | Men | 17 Sep 2026 | 10 | 188cm | ding |
-| Ethan Scott | Men | 7 Sep 2026 | 4 | 186cm | ethan-scott |
-| Ayla | Women | 2 Sep 2026 | 17 | 176cm | ayla |
-| Kushni | Men | 3 Aug 2026 | 4 | 188cm | kushni |
-| Tommie | Men | 3 Aug 2026 | 7 | 188cm | tommie |
-| Maurice | Men | 29 Jul 2026 | 16 | 186cm | maurice |
-
-Checks already done on all six:
-
-- No slug collides with an existing profile.
-- All six are `status: active`, `archived: false`, `is_test: false`.
-- All six are `is_minor: false` with `age_verified: true`.
-- All six have a cover photo and a gallery.
-- Board is empty on all six, but the feed falls back to division. Jeremy, Yassine
-  and Graham are already live on the men's board on that same fallback, so the
-  six will land on the correct boards without a board value being set.
-
-Gaps worth filling before they go live, none of them blocking:
-
-- Ding and Ethan Scott have no bust, waist or hips recorded.
-- Hair colour is missing on five of the six, eye colour on four.
-- No Instagram handle on any of the six.
-- `adult_confirmed_at` is empty on all six, although `age_verified` is true.
-
-Publishing is a single change per model in First Option, setting `web_online` to
-true, which regenerates the public feed the website reads. It has not been done,
-because a roster import is Phase B and ships only on Steven's sign off.
+- **The estate note is out of date.** The desk's standing note describes the
+  public site as Wix with Jin as external developer. The live site is a server
+  rendered React build on Lovable hosting behind Cloudflare, drawing its roster
+  and media from the First Option public API. Four `static.wixstatic.com` images
+  remain in use. The live record wins, so the note should be corrected.
 
 ## The other 124 unpublished models are correct as they are
 
 124 further active models are unpublished. All 124 arrived in the MediaSlide bulk
-import and carry a `mediaslide_id`. The website shows a curated 183 out of a
-wider roster, so this is deliberate and no action is proposed.
-
-## MediaSlide intake has not run for eight weeks
-
-The MediaSlide staging table was last populated on 27 July 2026, and the import
-log holds a single run, on 22 July 2026. Seven MediaSlide records are not in
-First Option at all: six named `NEW MODEL` and one named `OLIVER`. All seven are
-held at `safeguard_status: age_unverified_block`.
-
-The block is the safeguarding gate working correctly, so those seven are not
-models waiting to be published. They are incomplete records that need a date of
-birth in MediaSlide before they can move. The eight week gap in intake is the
-real point: new faces added to MediaSlide since late July would not have reached
-First Option, and so could not reach the website.
-
-Owner: Felix Ward with Beatrice Langley.
-
-## Phase A, prepared and waiting on one approval
-
-These are safe, do not touch copy about people, rates or clients, and are ready
-to hand to whoever holds the site project:
-
-1. Add the 71 sports profiles and `/casting` to sitemap.xml.
-2. Trim the embedded roster payload so a page ships only the records it renders,
-   starting with `/privacy`, `/terms` and `/cookies`, which need none.
-
-## Phase B, each needing Steven item by item
-
-1. Publish the six new models listed above.
-2. Decide what happens to Margaret Soler and Ti En, given the site has no
-   non-binary board.
-3. Restore Ananya Nunna's walk video by correcting the storage object permission.
-4. Clear the 15 stale rows from `website_public_profiles`.
-5. Resolve the two contradictory safeguarding records, with Lydia Fox.
-6. Confirm whether image usage consent is recorded, and where.
-7. Restart MediaSlide intake and complete the seven blocked records.
+import and carry a `mediaslide_id`. The website shows a curated roster out of a
+wider one, so this is deliberate and no action is proposed.
 
 ## Blocked
 
 - **The site project is not reachable from this session.** The public site is a
   Lovable build, but it is not in the Genesis Lovable workspace visible here, and
-  there is no GitHub repository for it in scope. The Phase A fixes are specified
+  there is no GitHub repository for it in scope. Open items 1 and 3 are specified
   and ready but cannot be applied from here. Access to the site project, or a
   handoff to whoever holds it, is needed to ship them.
 - **Browser level checks could not be completed.** Console errors and client side
-  runtime faults could not be swept, because this environment's certificate trust
+  runtime faults were not swept, because this environment's certificate trust
   store is incomplete for the browser and the available workaround weakens TLS.
-  Everything reported above comes from the server-rendered HTML and from direct
+  Everything reported here comes from the server rendered HTML and from direct
   requests, which covers content, links, media, metadata and the roster in full.
   A console sweep is still worth running from a normal browser.
 - Four inputs remain Steven's to confirm and are unchanged: the low credit
