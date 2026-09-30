@@ -90,18 +90,33 @@ page change is its meta description only.
    is correct: the car is ready, the time is the shipping.
 4. **Resolved: kept.** "RHD available from UK stock" and "we inspect it" are
    true (owner, 30 September 2026).
-5. **Resolved: identical duplicates removed.** Five generic catalogue lines
-   repeated a more detailed listing of the same car (same year, model, grade,
-   drive side, price and photographs): Hilux SR5, G 500, G 63, GLE 450 and
-   S 500. They are removed and their old links 301 to the listing that stays
-   (`lwd-africa-4-duplicates.diff`). Kept on purpose: the two Cybertruck
-   Cyberbeasts (LWD-096 and LWD-098, different mileage) and the two Isuzu
-   D-Max LS (LWD-027 red in Jebel Ali, LWD-074 grey in Dubai), which are
-   separate vehicles. Listings that share photos but are a different grade
-   stay too. A new test fails if the same name is ever listed twice without
-   separate stock numbers.
+5. **Resolved: identical duplicates removed.** Five cars were listed twice.
+   - **Mercedes G 500, G 63, GLE 450 and S 500.** A generic line showed the
+     same photographs as the owner's numbered unit (LWD-212, 213, 215, 217)
+     but at the model guide price, not the owner's price. Live prices before
+     removal: G 500 $166,800 against $196,500; G 63 $166,800 against
+     $271,500; GLE 450 $78,900 against $122,300; S 500 $97,100 against
+     $175,300. The generic lines are removed and their links 301 to the
+     numbered unit, so only the owner's own prices remain on sale.
+   - **Toyota Hilux SR5.** The UAE unit (`toyota-hilux-double-cab-sr5-manual-lhd-uae`)
+     is unpublished by the owner in admin, so the generic 2026 SR5 is the one
+     buyers see. The hidden UAE twin is removed and its link 301s to the
+     published listing. This also fixes a live fault: the published Hilux
+     page had pointed its canonical tag at the hidden page and was left out
+     of the sitemap (`lwd-africa-4-hilux-fix.diff`).
+   - Kept on purpose: the two Cybertruck Cyberbeasts (LWD-096 and LWD-098,
+     different mileage) and the two Isuzu D-Max LS (LWD-027 red in Jebel Ali,
+     LWD-074 grey in Dubai), which are separate vehicles, and listings that
+     share photos but are a different grade. A new test fails if the same
+     name is ever listed twice without separate stock numbers.
 6. Low-demand `/buy` model-and-country combinations could be set to `noindex`.
 7. **Resolved: already verified.** Search Console verified lwdcarsafrica.com on
    10 September 2026 by the `google-site-verification` meta tag in
    `__root.tsx`, which this review kept. Both sitemaps are declared in
    robots.txt.
+8. **For the owner: generic lines use the model average price.** The G 63
+   case shows the risk: a generic line for a high trim inherits the price of
+   the whole model. Worth a look in admin: Nissan Patrol LE, Toyota Fortuner
+   VX and Hilux GR-S reuse the photographs of a different trim (PRO-4X,
+   VXR 4.0 V6 and Hilux Adventure 4.0 V6), so their price and photos should
+   be checked against each other.

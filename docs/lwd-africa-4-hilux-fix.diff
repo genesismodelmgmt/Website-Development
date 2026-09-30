@@ -1,0 +1,112 @@
+diff --git a/src/lib/listing-photo-aliases.ts b/src/lib/listing-photo-aliases.ts
+index 0a5bcaa..d7f0609 100644
+--- a/src/lib/listing-photo-aliases.ts
++++ b/src/lib/listing-photo-aliases.ts
+@@ -23,7 +23,7 @@ export const GENERIC_LISTING_PHOTO_ALIASES: Record<string, string> = {
+   "2026-toyota-rav4-adventure": "LWD-255",
+   "2026-toyota-hilux-double-cab-base-4-door": "LWD-240",
+   "2026-toyota-hilux-double-cab-gr-s": "LWD-241",
+-
++  "2026-toyota-hilux-double-cab-sr5": "LWD-240",
+   "2026-toyota-fortuner-vx": "LWD-238",
+   "2026-toyota-fortuner-legender": "LWD-237",
+   "2026-nissan-patrol-le": "LWD-224",
+diff --git a/src/lib/order-now.test.ts b/src/lib/order-now.test.ts
+index 73cbc18..d71e601 100644
+--- a/src/lib/order-now.test.ts
++++ b/src/lib/order-now.test.ts
+@@ -15,10 +15,11 @@ const base = {
+ };
+ 
+ describe("order-now listings", () => {
+-  it("has at least 40 listings with unique slugs, priority three first", () => {
++  it("has at least 40 listings with unique slugs, priority units first", () => {
+     expect(ORDER_NOW_LISTINGS.length).toBeGreaterThanOrEqual(40);
+     expect(new Set(ORDER_NOW_LISTINGS.map((l) => l.slug)).size).toBe(ORDER_NOW_LISTINGS.length);
+-    expect(ORDER_NOW_LISTINGS.slice(0, 3).every((l) => l.priority)).toBe(true);
++    // Two since the owner-hidden UAE Hilux SR5 duplicate was removed (30 Sep 2026).
++    expect(ORDER_NOW_LISTINGS.slice(0, 2).every((l) => l.priority)).toBe(true);
+   });
+ 
+   it("redirects every removed or renamed listing to one that exists", () => {
+@@ -39,7 +40,6 @@ describe("order-now listings", () => {
+     }
+   });
+ 
+-
+   it("defaults to rounded model guide prices and the 4–8 week lead time", () => {
+     const r = applyOverrides([]).filter((listing) => !listing.unlisted);
+     expect(r.every((l) => l.priceGbp !== null && l.priceGbp > 0 && l.leadTime === "4 to 8 weeks" && l.depositPercent === 20)).toBe(true);
+diff --git a/src/lib/order-now.ts b/src/lib/order-now.ts
+index b55369c..fb76cfd 100644
+--- a/src/lib/order-now.ts
++++ b/src/lib/order-now.ts
+@@ -133,21 +133,6 @@ const UNITS: OrderNowListing[] = [
+     details: "New, left-hand drive, export specification",
+     defaultOrigin: "JP",
+   },
+-  {
+-    slug: "toyota-hilux-double-cab-sr5-manual-lhd-uae",
+-    carSlug: "toyota-hilux",
+-    year: 2026,
+-    title: "Toyota Hilux Double Cab",
+-    grade: "SR5",
+-    fuel: "Diesel",
+-    transmission: "Manual",
+-    driveSide: "LHD",
+-    colours: [],
+-    priority: true,
+-    condition: "new",
+-    details: "UAE stock, left-hand drive",
+-    defaultOrigin: "UAE",
+-  },
+   {
+     slug: "2003-mercedes-benz-sprinter-311-cdi-18-1-seat-minibus",
+     carSlug: "mercedes-sprinter",
+@@ -256,6 +241,7 @@ export const ORDER_NOW_LISTINGS: readonly OrderNowListing[] = [
+   L("toyota-land-cruiser-300", 2026, "Toyota Land Cruiser 300", "VXR", "3.5 V6 twin-turbo petrol", ["White", "Black", "Grey"], { defaultOrigin: "JP" }),
+   L("toyota-prado", 2026, "Toyota Land Cruiser Prado", "VX", "2.4 turbo petrol", WBS, { defaultOrigin: "JP" }),
+   L("toyota-hilux", 2026, "Toyota Hilux Double Cab", "GR-S", "2.8 turbo diesel", WBG),
++  L("toyota-hilux", 2026, "Toyota Hilux Double Cab", "SR5", "2.8 turbo diesel", WBS, { transmission: "Manual" }),
+   L("toyota-fortuner", 2026, "Toyota Fortuner", "VX", "2.7 petrol"),
+   L("toyota-fortuner", 2026, "Toyota Fortuner", "Legender", "2.8 turbo diesel", WBG),
+   L("toyota-hiace", 2026, "Toyota Hiace", "High-roof 15-seat", "2.8 turbo diesel", ["White", "Silver"], { transmission: "Manual" }),
+@@ -268,7 +254,6 @@ export const ORDER_NOW_LISTINGS: readonly OrderNowListing[] = [
+   L("lexus-rx", 2026, "Lexus RX 350h", "Premium", "2.5 petrol hybrid"),
+   // Mercedes-Benz
+   L("mercedes-gls", 2026, "Mercedes-Benz GLS", "GLS 450 4MATIC", "3.0 petrol mild hybrid"),
+-
+   L("mercedes-sprinter", 2026, "Mercedes-Benz Sprinter", "Panel van 316 CDI", "2.0 turbo diesel", ["White"], { transmission: "Manual" }),
+   // Land Rover
+   L("range-rover", 2026, "Range Rover", "SE P400", "3.0 petrol mild hybrid", WBG),
+@@ -420,13 +405,13 @@ export function makeOf(l: OrderNowListing): string {
+ /** Old listing slugs that were renamed, mapped to the current slug (301). */
+ export const LISTING_SLUG_REDIRECTS: Readonly<Record<string, string>> = {
+   "lwd-155-2026-ford-f-150-entry-trim-as-priced-from-by-al-tayer-trim-not-named": "lwd-155-2026-ford-f-150-base",
+-  // Generic lines removed as duplicates of the same car listed in full
+-  // (owner instruction, 30 Sep 2026): same year, model, grade, drive side and
+-  // price, and the same photographs. Old links go to the listing that stays.
+-  "2026-toyota-hilux-double-cab-sr5": "toyota-hilux-double-cab-sr5-manual-lhd-uae",
++  // Duplicate lines removed (owner instruction, 30 Sep 2026): the same car
++  // listed twice with the same year, model, grade, drive side and price. Old
++  // links go to the listing that stays. The UAE Hilux SR5 was the owner-hidden
++  // twin of the published 2026 Hilux SR5, so it is the one removed.
++  "toyota-hilux-double-cab-sr5-manual-lhd-uae": "2026-toyota-hilux-double-cab-sr5",
+   "2026-mercedes-benz-g-class-g-500": "lwd-212-2026-mercedes-benz-g-class-g-500",
+   "2026-mercedes-amg-g-63-amg": "lwd-213-2026-mercedes-benz-g-class-mercedes-amg-g-63",
+   "2026-mercedes-benz-gle-gle-450-4matic": "lwd-215-2026-mercedes-benz-gle-gle-450-4matic",
+   "2026-mercedes-benz-s-class-s-500-4matic": "lwd-217-2026-mercedes-benz-s-class-s-500-4matic",
+ };
+-
+diff --git a/src/routes/terms.tsx b/src/routes/terms.tsx
+index 1f719c9..fd40206 100644
+--- a/src/routes/terms.tsx
++++ b/src/routes/terms.tsx
+@@ -120,7 +120,6 @@ function TermsPage() {
+         shipping cost will never exceed this estimate, and if it comes in lower we refund the
+         difference. Door-to-door delivery beyond the port is optional, quoted separately and agreed
+         with you in writing before it is booked. When you ship your own vehicle with us, the price for your route is shown instantly;
+-
+         you pay in full to book. If we cannot ship, your
+         payment is refunded in full.
+       </P>
