@@ -71,7 +71,7 @@ page change is its meta description only.
   including the new check that the WhatsApp freight route is in the first
   screen at 320px with a 44px touch target.
 
-## Open decisions for the owner
+## Owner decisions (30 September 2026)
 
 1. **Resolved: port and door to door are both offered.** Owner decision: the
    checkout price ships to the destination port; door-to-door delivery with
@@ -81,11 +81,27 @@ page change is its meta description only.
    listing price, how-buying-works step 06, the landed-cost customs and
    inland notes, the home page process step, the hub fallback description
    and the order-now header comment.
-2. The claim that the final shipping cost will never exceed the estimate.
-3. Supplier copy "supplied new in stock and ready to ship" next to "Delivery 4
-   to 8 weeks".
-4. `/ship-to` pages say "RHD available from UK stock" and "we inspect it".
-5. Duplicate listings should be removed from the catalogue rather than only
-   canonicalised.
+2. **Resolved: the shipping cap stays.** "The final shipping cost will never
+   exceed the estimate" matches how checkout works (freight is paid once, up
+   front, with no top-up), is in the terms and is a selling point. The terms
+   now scope it to shipping to the destination port and say door-to-door
+   delivery is optional, quoted separately and agreed in writing.
+3. **Resolved: kept.** "Ready to ship" beside the 4 to 8 week delivery period
+   is correct: the car is ready, the time is the shipping.
+4. **Resolved: kept.** "RHD available from UK stock" and "we inspect it" are
+   true (owner, 30 September 2026).
+5. **Resolved: identical duplicates removed.** Five generic catalogue lines
+   repeated a more detailed listing of the same car (same year, model, grade,
+   drive side, price and photographs): Hilux SR5, G 500, G 63, GLE 450 and
+   S 500. They are removed and their old links 301 to the listing that stays
+   (`lwd-africa-4-duplicates.diff`). Kept on purpose: the two Cybertruck
+   Cyberbeasts (LWD-096 and LWD-098, different mileage) and the two Isuzu
+   D-Max LS (LWD-027 red in Jebel Ali, LWD-074 grey in Dubai), which are
+   separate vehicles. Listings that share photos but are a different grade
+   stay too. A new test fails if the same name is ever listed twice without
+   separate stock numbers.
 6. Low-demand `/buy` model-and-country combinations could be set to `noindex`.
-7. Google Search Console verification token is still to be added.
+7. **Resolved: already verified.** Search Console verified lwdcarsafrica.com on
+   10 September 2026 by the `google-site-verification` meta tag in
+   `__root.tsx`, which this review kept. Both sitemaps are declared in
+   robots.txt.
