@@ -1,0 +1,98 @@
+diff --git a/src/components/how-buying-works.tsx b/src/components/how-buying-works.tsx
+index 9844119..78d57a0 100644
+--- a/src/components/how-buying-works.tsx
++++ b/src/components/how-buying-works.tsx
+@@ -18,7 +18,11 @@ const STEPS = [
+     t: "Shipping paid with the car",
+     d: "Estimated shipping is added at checkout; if it comes in lower we refund the difference.",
+   },
+-  { n: "06", t: "Delivered to your address", d: "Door to door, anywhere in West Africa." },
++  {
++    n: "06",
++    t: "To your port or your door",
++    d: "Checkout ships to your port. Door-to-door delivery is quoted on request; import duty is paid by the buyer.",
++  },
+ ];
+ 
+ /** The short band that says, plainly, that a car can be bought here. */
+diff --git a/src/components/landed-cost.tsx b/src/components/landed-cost.tsx
+index 21fa1d6..f394b6a 100644
+--- a/src/components/landed-cost.tsx
++++ b/src/components/landed-cost.tsx
+@@ -19,11 +19,11 @@ const ITEMS: { label: string; note: string }[] = [
+   },
+   {
+     label: "Customs & duty at destination",
+-    note: "Clearance handled for you; the duty position for your vehicle is set out in the quote.",
++    note: "Import duty and taxes are paid by the buyer. We can handle clearance for you, and the duty position is set out in the quote.",
+   },
+   {
+     label: "Inland delivery",
+-    note: "Delivered to your address after clearance, not just left at the port.",
++    note: "Optional: delivered to your address after clearance, or collect at the port. Your choice.",
+   },
+   { label: "Our sourcing fee", note: "Stated up front and included in the total delivered cost breakdown." },
+ ];
+diff --git a/src/lib/order-now.ts b/src/lib/order-now.ts
+index 0dac0c2..6a88bd3 100644
+--- a/src/lib/order-now.ts
++++ b/src/lib/order-now.ts
+@@ -3,12 +3,12 @@ import { STOCK_UNITS_BATCH_2 } from "./order-now-units-b2";
+ import { STOCK_UNITS_BATCH_3 } from "./order-now-units-b3";
+ import { STOCK_UNITS_BATCH_4 } from "./order-now-units-b4";
+ /**
+- * Vehicles for sale with a stated delivery period. They are never described
+- * as "in stock" (see order-now.test.ts); schema availability is PreOrder.
++ * Vehicles for sale with a stated delivery period. Schema availability is
++ * InStock for every priced listing (owner decision, 30 Sep 2026); there is no
++ * pre-order state.
+  *
+- * Price: every listing ships as "Price on request". A price appears only when
+- * the owner enters a firm GBP figure in /admin/order-now; only then can a
+- * deposit be taken online and only then is an Offer (PreOrder) emitted.
++ * Price: an audited owner override wins, otherwise the rounded model guide
++ * price (see AGENTS.md); an Offer is emitted only when a price exists.
+  * The 29 September 2026 research pass could not reproduce a defensible
+  * Type 7 cohort for any configuration (see docs in the report), so no guide
+  * figures are published here.
+diff --git a/src/lib/seo-content/hub-copy.ts b/src/lib/seo-content/hub-copy.ts
+index fef645a..21c2b70 100644
+--- a/src/lib/seo-content/hub-copy.ts
++++ b/src/lib/seo-content/hub-copy.ts
+@@ -104,7 +104,7 @@ export function bodyHead(h1: string, label: string, ls: readonly ResolvedOrderNo
+         `${plural(ls.length, `${label.toLowerCase()} listing`)} with prices from ${listUpTo(makes, 4)}.`,
+         `${cap(conditionPhrase(ls) || "listed")}, ${driveSidePhrase(ls)}, shipped from ${originsPhrase(ls)} to West Africa.`,
+       )
+-    : fitDescription(`${label} for West Africa, sourced to order and shipped door to door.`);
++    : fitDescription(`${label} for West Africa, in stock and shipped to your port or your door.`);
+   return { title, desc };
+ }
+ 
+diff --git a/src/routes/buy-now.$slug.tsx b/src/routes/buy-now.$slug.tsx
+index ea802c0..a97bffa 100644
+--- a/src/routes/buy-now.$slug.tsx
++++ b/src/routes/buy-now.$slug.tsx
+@@ -299,6 +299,10 @@ function ListingPage() {
+               ) : null}
+             </div>
+             <p className="mt-4 text-sm text-muted-foreground leading-relaxed">{ORDER_NOW_PROMISE}</p>
++            <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
++              Checkout ships to your destination port. Door-to-door delivery, with clearance, is quoted on
++              request. Import duty and taxes are paid by the buyer.
++            </p>
+             <div className="mt-6 flex flex-col gap-3">
+               {l.priceGbp !== null ? (
+                 <Link
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index faaad32..793baee 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -797,7 +797,7 @@ function Process() {
+     },
+     {
+       t: "Clear and deliver",
+-      d: "We clear customs at destination and deliver to your address, where we hand over the keys.",
++      d: "Collect at your port, or ask us to clear customs and deliver to your address, where we hand over the keys. Import duty is paid by the buyer.",
+     },
+   ];
+   return (

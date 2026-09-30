@@ -7,6 +7,12 @@ content, user flow), and their changes were checked and merged into one diff,
 Owner decision taken during the review: every priced `/buy-now` listing is
 reported to search engines as in stock.
 
+**The site is live.** Published 30 September 2026 from Lovable commit
+`2367ff6e`. Checked on lwdcarsafrica.com: `/`, `/buy-now`, `/shipping`,
+`/robots.txt` and `/sitemap.xml` return 200; robots disallows `/admin` and
+`/api/`; the site-wide googlebot tag is gone; a live listing carries
+`schema.org/InStock` and the port and door-to-door line.
+
 ## Technical SEO
 
 - New `src/lib/seo/site.ts` holds the site URL, the organisation `@id`, and
@@ -67,10 +73,14 @@ page change is its meta description only.
 
 ## Open decisions for the owner
 
-1. **"Door to door" versus "to the port".** Several pages promise delivery to
-   the buyer's address, but checkout prices shipping to the destination port
-   and excludes duty, VAT and clearance. One of the two must change; the site
-   should not promise more than checkout sells.
+1. **Resolved: port and door to door are both offered.** Owner decision: the
+   checkout price ships to the destination port; door-to-door delivery with
+   clearance is quoted on request; import duty and taxes are the buyer's, as
+   is standard for vehicle imports; pre-order wording is removed. Applied as
+   `lwd-africa-4-delivery-terms.diff` (6 files, copy only): a line under every
+   listing price, how-buying-works step 06, the landed-cost customs and
+   inland notes, the home page process step, the hub fallback description
+   and the order-now header comment.
 2. The claim that the final shipping cost will never exceed the estimate.
 3. Supplier copy "supplied new in stock and ready to ship" next to "Delivery 4
    to 8 weeks".
