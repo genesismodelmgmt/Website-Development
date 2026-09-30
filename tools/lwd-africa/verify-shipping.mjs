@@ -384,7 +384,25 @@ if (wants("dialog") && SHIPPING_PRESENT) {
     }, OPENER.source);
 
     if (!openerInfo) {
-      record(`freight quote dialog opens @${w}x${h}`, false, "no visible button naming a quote found on /shipping");
+      // The freight quote dialog was retired on 30 Sep 2026: it had come to route
+      // every freight enquiry to a car-only price form. The quote route is now a
+      // WhatsApp link naming the service. Check that route instead of failing on
+      // a component that intentionally no longer exists: a wa.me link must be
+      // visible in the first screen and carry a composed message.
+      const wa = await page.evaluate(() => {
+        const a = Array.from(document.querySelectorAll('a[href^="https://wa.me/"]')).find((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.top < window.innerHeight && r.bottom > 0;
+        });
+        if (!a) return null;
+        const r = a.getBoundingClientRect();
+        return { top: Math.round(r.top), h: Math.round(r.height), hasText: new URL(a.href).searchParams.get("text")?.length ?? 0 };
+      });
+      record(
+        `freight quote route (WhatsApp) is in the first screen @${w}x${h}`,
+        !!wa && wa.hasText > 0 && wa.h >= 44,
+        wa ? `link at y=${wa.top}, ${wa.h}px tall, message ${wa.hasText} chars` : "no visible wa.me link in the first screen",
+      );
       await context.close();
       continue;
     }

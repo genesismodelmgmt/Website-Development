@@ -268,7 +268,16 @@ for (const [width, height] of [
       if (m.type() !== "error") return;
       const text = m.text();
       if (SANDBOX_EGRESS.test(text)) return;
+      // A bare "404" console line carries no URL. 404s are judged by the
+      // response listener below instead, which can tell a real missing local
+      // file from a /__l5e/ photo that only Lovable's hosting serves.
+      if (/status of 404/.test(text)) return;
       problems.push(`console (${route}): ` + text.slice(0, 120));
+    });
+    page.on("response", (r) => {
+      const u = r.url();
+      if (r.status() === 404 && u.includes("127.0.0.1") && !u.includes("/__l5e/"))
+        problems.push(`404 (${route}): ` + u.slice(0, 100));
     });
     page.on("pageerror", (e) => problems.push(`pageerror (${route}): ` + e.message.slice(0, 120)));
     page.on("requestfailed", (r) => {
